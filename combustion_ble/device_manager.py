@@ -14,6 +14,7 @@ from combustion_ble.devices.device import Device
 from combustion_ble.devices.meat_net_node import MeatNetNode
 from combustion_ble.devices.probe import Probe
 from combustion_ble.exceptions import DFUNotImplementedError
+from combustion_ble.logger import LOGGER
 from combustion_ble.message_handlers import MessageHandlers
 from combustion_ble.uart.log_request import LogRequest
 from combustion_ble.uart.log_response import LogResponse
@@ -117,10 +118,14 @@ class DeviceManager(BleManagerDelegate):
         await BleManager.shared.init_bluetooth()
 
     async def async_stop(self):
-        """Stop all asynchronous tasks. Must be called prior to terminating your application."""
+        """Stop all asynchronous tasks and BLE scanning. Must be called prior to terminating your application."""
         if self.timer_task:
             self.timer_task.cancel()
             self.timer_task = None
+        try:
+            await BleManager.shared.stop_bluetooth()
+        except Exception:
+            LOGGER.exception("Error stopping BleManager")
 
     async def _start_timers(self):
         while True:

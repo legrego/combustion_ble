@@ -66,7 +66,6 @@ class BleManager:
 
     def __init__(self):
         self.clients: dict[str, BleakClient] = {}
-        self.peripherals: dict[str, BLEDevice] = {}
         self.scanner: Optional[BleakScanner] = None
         self.delegate: Optional[BleManagerDelegate] = None
         self.device_status_characteristics: dict[str, BleakGATTCharacteristic] = {}
@@ -75,10 +74,13 @@ class BleManager:
         self.hw_revision_characteristics: dict[str, BleakGATTCharacteristic] = {}
         self.serial_number_characteristics: dict[str, BleakGATTCharacteristic] = {}
         self.model_number_characteristics: dict[str, BleakGATTCharacteristic] = {}
+        self.is_stopping = False
 
     async def init_bluetooth(self, scanner: Optional[BleakScanner] = None):
         if self.scanner:
             raise CombustionError("Bluetooth has already been initialized.")
+        if self.is_stopping:
+            raise CombustionError("Cannot initialize bluetooth while it is stopping.")
 
         if scanner:
             LOGGER.debug("Initializing bluetooth with provided BleakScanner.")
@@ -88,6 +90,24 @@ class BleManager:
             LOGGER.debug("Initializing bluetooth with our own BleakScanner.")
             self.scanner = BleakScanner(detection_callback=self.detection_callback)
             await self.scanner.start()
+
+    async def stop_bluetooth(self):
+        self.is_stopping = True
+        if self.scanner:
+            try:
+                await self.scanner.stop()
+            except Exception:
+                LOGGER.exception("Error stopping Bleak scanner")
+            if self.clients:
+                for client in self.clients:
+                    try:
+                        if self.clients[client].is_connected:
+                            await self.clients[client].disconnect()
+                    except Exception:
+                        LOGGER.exception("Error disconnecting client")
+        self.clients = {}
+        self.scanner = None
+        self.is_stopping = False
 
     def detection_callback(self, device: BLEDevice, advertisement_data: AdvertisementData):
         if BT_MANUFACTURER_ID not in advertisement_data.manufacturer_data:
