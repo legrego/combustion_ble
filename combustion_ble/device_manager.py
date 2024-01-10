@@ -14,7 +14,6 @@ from combustion_ble.devices.device import Device
 from combustion_ble.devices.meat_net_node import MeatNetNode
 from combustion_ble.devices.probe import Probe
 from combustion_ble.exceptions import DFUNotImplementedError
-from combustion_ble.logger import LOGGER
 from combustion_ble.message_handlers import MessageHandlers
 from combustion_ble.uart.log_request import LogRequest
 from combustion_ble.uart.log_response import LogResponse
@@ -49,9 +48,6 @@ from combustion_ble.uart.meatnet.node_request import NodeRequest
 from combustion_ble.uart.meatnet.node_response import NodeResponse
 from combustion_ble.uart.meatnet.node_set_prediction_request import (
     NodeSetPredictionResponse,
-)
-from combustion_ble.uart.meatnet.node_sync_thermometer_list_request import (
-    NodeSyncThermometerListRequest,
 )
 from combustion_ble.uart.meatnet.node_uart_message import NodeUARTMessage
 from combustion_ble.uart.read_over_temperature import (

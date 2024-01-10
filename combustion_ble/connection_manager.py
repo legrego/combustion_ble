@@ -1,6 +1,6 @@
 import asyncio
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Optional
 
 from combustion_ble.devices.device import Device
 from combustion_ble.utilities.asyncio_utils import ensure_future
