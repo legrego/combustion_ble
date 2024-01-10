@@ -6,6 +6,9 @@ Discovered probes show up as instances of the Probe class in the `DeviceManager.
 
 This SDH was heavily inspired by [Combustion Inc.'s Swift SDK](https://github.com/combustion-inc/combustion-ios-ble). As such, the API is very similar, and the documentation for that SDK is a good reference for this one. The architecture may not be "pythonic" in every respect, but the primary design goal is to make subsequent updaets to this SDH as easy as possible, by tracking the diffs from the "upstream" Swift SDH.
 
+## Documentation
+Docs for this project are in-progress, and are located at https://combustion-ble.readthedocs.io/
+
 ## Usage
 
 Docs are still in-progress. In the meantime, see the [examples](https://github.com/legrego/combustion_ble/tree/main/examples) directory for some sample code.
