@@ -1,4 +1,3 @@
-
 from combustion_ble.ble_data.prediction_log import PredictionLog
 from combustion_ble.ble_data.probe_temperatures import ProbeTemperatures
 from combustion_ble.uart.response import Response

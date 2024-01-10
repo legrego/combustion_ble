@@ -6,7 +6,6 @@ NOTE: This file does not have an upstream match
 from enum import Enum, unique
 
 
-
 @unique
 class FoodSafeMode(Enum):
     """Food Safe Mode."""

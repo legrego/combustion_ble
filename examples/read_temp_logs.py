@@ -8,9 +8,7 @@ from rich.table import Table
 
 from combustion_ble.device_manager import DeviceManager
 from combustion_ble.devices.probe import Probe
-from examples.example_utils import (
-    configure_logging,
-)
+from examples.example_utils import configure_logging
 
 
 def generate_data_points(probe: Probe) -> list[list[tuple[datetime, float]]]:

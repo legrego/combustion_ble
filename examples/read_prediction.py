@@ -6,10 +6,7 @@ from rich.live import Live
 from rich.table import Table
 
 from combustion_ble.device_manager import DeviceManager
-from examples.example_utils import (
-    configure_logging,
-    format_device_name,
-)
+from examples.example_utils import configure_logging, format_device_name
 
 
 async def main():

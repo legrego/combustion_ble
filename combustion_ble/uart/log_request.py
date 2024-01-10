@@ -1,4 +1,3 @@
-
 from combustion_ble.uart.message_type import MessageType
 from combustion_ble.uart.request import Request
 
