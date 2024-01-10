@@ -5,8 +5,6 @@ NOTE: This file does not have an upstream match
 
 from enum import Enum, unique
 
-from combustion_ble.logger import LOGGER
-
 
 @unique
 class FoodSafeMode(Enum):

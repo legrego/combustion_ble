@@ -1,5 +1,4 @@
 import random
-import struct
 from typing import Optional
 
 from combustion_ble.uart.meatnet.node_message_type import NodeMessageType

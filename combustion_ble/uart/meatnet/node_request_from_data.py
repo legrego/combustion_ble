@@ -4,9 +4,6 @@ from combustion_ble.logger import LOGGER
 from combustion_ble.uart.meatnet.node_heartbeat_request import NodeHeartbeatRequest
 from combustion_ble.uart.meatnet.node_message_type import NodeMessageType
 from combustion_ble.uart.meatnet.node_probe_status_request import NodeProbeStatusRequest
-from combustion_ble.uart.meatnet.node_read_session_info_request import (
-    NodeReadSessionInfoRequest,
-)
 from combustion_ble.uart.meatnet.node_request import NodeRequest
 from combustion_ble.uart.meatnet.node_sync_thermometer_list_request import (
     NodeSyncThermometerListRequest,

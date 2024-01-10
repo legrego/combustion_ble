@@ -1,5 +1,4 @@
-import asyncio
-from typing import Any, Optional
+from typing import Optional
 
 from bleak import BleakClient, BleakError, BleakGATTCharacteristic, BleakScanner
 from bleak.backends.device import BLEDevice
