@@ -1,20 +1,14 @@
 """This example illustrates how you can read prediction data."""
 import asyncio
-import logging
 from signal import SIGINT, SIGTERM
 
 from rich.live import Live
-from rich.logging import RichHandler
 from rich.table import Table
 
 from combustion_ble.device_manager import DeviceManager
-from combustion_ble.devices.probe import Probe
-from combustion_ble.logger import LOGGER
 from examples.example_utils import (
     configure_logging,
-    format_connection_state,
     format_device_name,
-    format_temperatures,
 )
 
 
