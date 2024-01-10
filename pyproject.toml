@@ -8,6 +8,10 @@ name = "combustion_ble"
 dynamic = ["version"]
 readme = "README.md"
 classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: Apache License",
+    "Operating System :: OS Independent",
 ]
 authors = [
     {name = "Larry Gregory", email = "lgregorydev@gmail.com"}
