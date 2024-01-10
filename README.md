@@ -8,4 +8,4 @@ This SDH was heavily inspired by [Combustion Inc.'s Swift SDK](https://github.co
 
 ## Usage
 
-Docs are still in-progress. In the meantime, see the [examples](./examples/) directory for some sample code.
+Docs are still in-progress. In the meantime, see the [examples](https://github.com/legrego/combustion_ble/tree/main/examples) directory for some sample code.

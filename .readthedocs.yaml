@@ -4,6 +4,11 @@ sphinx:
   configuration: docs/source/conf.py
   fail_on_warning: true
 
+build:
+  os: ubuntu-22.04
+  tools:
+    python: "3.11"
+
 python:
   version: "3.11"
   install:
@@ -11,4 +16,3 @@ python:
       path: .
       extra_requirements:
         - dev
-

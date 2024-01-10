@@ -16,6 +16,7 @@ classifiers = [
 authors = [
     {name = "Larry Gregory", email = "lgregorydev@gmail.com"}
 ]
+description = "SDK for communicating with Combustion Bluetooth devices"
 requires-python = ">=3.11"
 dependencies = [
   "bitstring",
@@ -27,7 +28,7 @@ license = {file = "LICENSE"}
 Homepage = "https://github.com/legrego/combustion_ble"
 Repository = "https://github.com/legrego/combustion_ble"
 Changelog = "https://github.com/legrego/combustion_ble/blob/main/CHANGELOG.md"
-# Documentation = "https://combustion_ble.readthedocs.io/"
+Documentation = "https://combustion_ble.readthedocs.io/"
 
 [project.optional-dependencies]
 dev = [
