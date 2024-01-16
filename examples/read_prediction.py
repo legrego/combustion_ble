@@ -29,7 +29,7 @@ async def main():
             prediction = "N/A"
             if probe.prediction_info:
                 state = probe.prediction_info.prediction_state.to_string()
-                prediction = str(probe.prediction_info)
+                prediction = str(probe._prediction_info)
             table.add_row(name, str(probe.last_update_time), state, prediction)
 
         return table

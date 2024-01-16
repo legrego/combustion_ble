@@ -32,7 +32,7 @@ async def main():
             name = format_device_name(device)
             connection = format_connection_state(device.connection_state)
             if isinstance(device, Probe):
-                temperatures = format_temperatures(device.current_temperatures)
+                temperatures = format_temperatures(device._current_temperatures)
                 table.add_row(name, connection, str(device.last_update_time), temperatures)
             else:
                 details = f"fw: {device.firmware_version} hw: {device.hardware_revision}"

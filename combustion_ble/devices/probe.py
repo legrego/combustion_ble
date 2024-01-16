@@ -24,16 +24,31 @@ from combustion_ble.uart.log_response import LogResponse
 from combustion_ble.uart.meatnet.node_read_logs_response import NodeReadLogsResponse
 from combustion_ble.uart.session_info import SessionInformation
 from combustion_ble.utilities.asyncio_utils import ensure_future
+from combustion_ble.utilities.monitor import Monitorable, RemoveListener, UpdateListener
 
 if TYPE_CHECKING:
     from ..device_manager import DeviceManager
 
 
+DEADBAND_RANGE_IN_CELSIUS = 0.05
+
+
 class VirtualTemperatures:
-    def __init__(self, core_temperature, surface_temperature, ambient_temperature):
+    def __init__(
+        self,
+        core_temperature=DEADBAND_RANGE_IN_CELSIUS,
+        surface_temperature=DEADBAND_RANGE_IN_CELSIUS,
+        ambient_temperature=DEADBAND_RANGE_IN_CELSIUS,
+    ):
         self.core_temperature = core_temperature
         self.surface_temperature = surface_temperature
         self.ambient_temperature = ambient_temperature
+
+
+class Overheating:
+    def __init__(self, is_overheating: bool, overheating_sensors: list[int]) -> None:
+        self.is_overheating = is_overheating
+        self.overheating_sensors = overheating_sensors
 
 
 class Probe(Device):
@@ -74,78 +89,135 @@ class Probe(Device):
             device_manager=device_manager,
             rssi=rssi,
         )
-        self.serial_number = advertising.serial_number
-        self.serial_number_string = f"{self.serial_number:08X}"
+        self._serial_number = advertising.serial_number
+        self._serial_number_string = f"{self._serial_number:08X}"
 
-        self.id = advertising.mode_id.id
-        self.color = advertising.mode_id.color
-        self.current_temperatures: Optional[ProbeTemperatures] = None
-        self.instant_read_celsius: Optional[float] = None
-        self.instant_read_fahrenheit: Optional[float] = None
-        self.instant_read_temperature: Optional[float] = None
-        self.min_sequence_number: Optional[int] = None
-        self.max_sequence_number: Optional[int] = None
-        self.percent_of_logs_synced: Optional[int] = None
-        self.battery_status = BatteryStatus.OK
-        self.virtual_sensors: Optional[VirtualSensors] = None
-        self.prediction_info: Optional[PredictionInfo] = None
-        self.virtual_temperatures: Optional[VirtualTemperatures] = None
-        self.temperature_logs: list[ProbeTemperatureLog] = []
-        self.overheating = False
-        self.overheating_sensors: list[int] = []
-        self.last_status_notification_time = datetime.now()
-        self.status_notifications_stale = False
-        self.session_information: Optional[SessionInformation] = None
-        self.last_instant_read: Optional[datetime] = None
-        self.last_instant_read_hop_count: Optional[HopCount] = None
-        self.last_normal_mode: Optional[datetime] = None
-        self.last_normal_mode_hop_count: Optional[HopCount] = None
-        self.prediction_manager = PredictionManager()
-        self.instant_read_filter = InstantReadFilter()
-        self.session_request_task: Optional[asyncio.Task] = None
+        self._id = advertising.mode_id.id
+        self._color = advertising.mode_id.color
+        self._current_temperatures: Optional[ProbeTemperatures] = None
+        self._instant_read_celsius: Optional[float] = None
+        self._instant_read_fahrenheit: Optional[float] = None
+        self._instant_read_temperature: Optional[float] = None
+        self._min_sequence_number: Optional[int] = None
+        self._max_sequence_number: Optional[int] = None
+        self._percent_of_logs_synced: Optional[int] = None
+        self._battery_status = Monitorable(BatteryStatus.OK)
+        self._virtual_sensors: Optional[VirtualSensors] = None
+        self._prediction_info: Monitorable[Optional[PredictionInfo]] = Monitorable(None)
+        self._virtual_temperatures: Monitorable[VirtualTemperatures] = Monitorable(
+            VirtualTemperatures()
+        )
+        self._temperature_logs: list[ProbeTemperatureLog] = []
+        self._overheating: Monitorable[Overheating] = Monitorable(
+            Overheating(is_overheating=False, overheating_sensors=[])
+        )
+        self._last_status_notification_time = datetime.now()
+        self._status_notifications_stale = False
+        self._session_information: Optional[SessionInformation] = None
+        self._last_instant_read: Optional[datetime] = None
+        self._last_instant_read_hop_count: Optional[HopCount] = None
+        self._last_normal_mode: Optional[datetime] = None
+        self._last_normal_mode_hop_count: Optional[HopCount] = None
+        self._prediction_manager = PredictionManager()
+        self._instant_read_filter = InstantReadFilter()
+        self._session_request_task: Optional[asyncio.Task] = None
 
-        self.prediction_manager.add_update_listener(self.publish_prediction_info)
+        self._prediction_manager.add_update_listener(self._publish_prediction_info)
 
         # Update the probe with advertising data
         self.update_with_advertising(advertising, is_connectable, rssi, identifier)
 
         # Start timer to re-request session information every 3 minutes
-        self.start_session_request_timer()
+        self._start_session_request_timer()
 
-    async def session_request_timer(self):
+    @property
+    def serial_number(self) -> int:
+        """Serial number for this device."""
+        return self._serial_number
+
+    @property
+    def serial_number_string(self) -> str:
+        """Readable (string) representation of this device's serial number."""
+        return self._serial_number_string
+
+    @property
+    def batery_status(self) -> BatteryStatus:
+        """The current battery status."""
+        return self._battery_status.value
+
+    def add_battery_status_listener(
+        self, listener: UpdateListener[BatteryStatus]
+    ) -> RemoveListener:
+        """Add a listener for battery status changes."""
+        return self._battery_status.add_update_listener(listener)
+
+    @property
+    def virtual_temperatures(self) -> VirtualTemperatures:
+        """The current virtual temperatures."""
+        return self._battery_status.value
+
+    def add_virtual_temperatures_listener(
+        self, listener: UpdateListener[VirtualTemperatures]
+    ) -> RemoveListener:
+        """Add a listener for virtual temperatures changes."""
+        return self._virtual_temperatures.add_update_listener(listener)
+
+    @property
+    def overheating(self) -> Overheating:
+        """Overheating information."""
+        return self._overheating.value
+
+    def add_overheating_listener(self, listener: UpdateListener[Overheating]) -> RemoveListener:
+        """Add a listener for overheating changes."""
+        return self._overheating.add_update_listener(listener)
+
+    @property
+    def prediction_info(self) -> Optional[PredictionInfo]:
+        """Prediction information."""
+        return self._prediction_info.value
+
+    def add_prediction_info_listener(
+        self, listener: UpdateListener[Optional[PredictionInfo]]
+    ) -> RemoveListener:
+        """Add a listener for prediction info changes."""
+        return self._prediction_info.add_update_listener(listener)
+
+    async def _session_request_timer(self):
         while True:
             await asyncio.sleep(180)  # Wait for 180 seconds
-            await self.request_session_information()
+            await self._request_session_information()
 
-    def start_session_request_timer(self):
-        if self.session_request_task is None or self.session_request_task.done():
-            self.session_request_task = asyncio.create_task(self.session_request_timer())
+    def _start_session_request_timer(self):
+        if self._session_request_task is None or self._session_request_task.done():
+            self._session_request_task = asyncio.create_task(self._session_request_timer())
 
-    def stop_session_request_timer(self):
-        if self.session_request_task and not self.session_request_task.done():
-            self.session_request_task.cancel()
+    def _stop_session_request_timer(self):
+        if self._session_request_task and not self._session_request_task.done():
+            self._session_request_task.cancel()
 
-    def publish_prediction_info(self, prediction_info: PredictionInfo):
-        self.prediction_info = prediction_info
+    def _publish_prediction_info(self, prediction_info: PredictionInfo):
+        self._prediction_info.update(prediction_info)
 
-    def update_connection_state(self, state):
+    def _update_connection_state(self, state):
         if state == self.ConnectionState.DISCONNECTED:
-            self.session_information = None
-        super().update_connection_state(state)
+            self._session_information = None
+        super()._update_connection_state(state)
 
-    def update_device_stale(self):
+    def _update_device_stale(self):
         """Updates the device's stale status. Clears instant read temperatures if they are stale
         and updates whether status notifications are stale.
         """
-        if self.last_instant_read:
-            time_since_last_instant_read = (datetime.now() - self.last_instant_read).total_seconds()
+        if self._last_instant_read:
+            time_since_last_instant_read = (
+                datetime.now() - self._last_instant_read
+            ).total_seconds()
             if time_since_last_instant_read > self.INSTANT_READ_STALE_TIMEOUT:
-                self.instant_read_celsius = None
-                self.instant_read_fahrenheit = None
-                self.instant_read_temperature = None
+                self._instant_read_celsius = None
+                self._instant_read_fahrenheit = None
+                self._instant_read_temperature = None
 
-        self.update_status_notifications_stale()
-        super().update_device_stale()
+        self._update_status_notifications_stale()
+        super()._update_device_stale()
 
     def update_with_advertising(
         self,
@@ -170,16 +242,16 @@ class Probe(Device):
                 # and does not contain Prediction information, DO NOT lock it out. We want to
                 # ensure the Prediction info gets updated over a Status notification if one
                 # comes in.
-                if self.should_update_normal_mode(advertising.hop_count):
+                if self._should_update_normal_mode(advertising.hop_count):
                     # Update ID, Color, Battery status
-                    self.update_id_color_battery(
+                    self._update_id_color_battery(
                         advertising.mode_id.id,
                         advertising.mode_id.color,
                         advertising.battery_status_virtual_sensors.battery_status,
                     )
 
                     # Update temperatures, virtual sensors, and check for overheating
-                    self.update_temperatures(
+                    self._update_temperatures(
                         advertising.temperatures,
                         advertising.battery_status_virtual_sensors.virtual_sensors,
                     )
@@ -191,7 +263,7 @@ class Probe(Device):
                 if advertising.type != CombustionProductType.PROBE:
                     hop_count = advertising.hop_count
 
-                if self.update_instant_read(
+                if self._update_instant_read(
                     advertising.temperatures.values[0],
                     advertising.mode_id.id,
                     advertising.mode_id.color,
@@ -200,27 +272,29 @@ class Probe(Device):
                 ):
                     self.last_update_time = datetime.now()
 
-    def update_id_color_battery(
+    def _update_id_color_battery(
         self, probe_id: ProbeID, probe_color: ProbeColor, probe_battery_status: BatteryStatus
     ):
-        self.id = probe_id
-        self.color = probe_color
-        self.battery_status = probe_battery_status
+        self._id = probe_id
+        self._color = probe_color
+        self._battery_status.update(probe_battery_status)
 
-    def update_temperatures(self, temperatures: ProbeTemperatures, virtual_sensors: VirtualSensors):
-        self.current_temperatures = temperatures
-        self.virtual_sensors = virtual_sensors
+    def _update_temperatures(
+        self, temperatures: ProbeTemperatures, virtual_sensors: VirtualSensors
+    ):
+        self._current_temperatures = temperatures
+        self._virtual_sensors = virtual_sensors
 
         core = virtual_sensors.virtual_core.temperature_from(temperatures)
         surface = virtual_sensors.virtual_surface.temperature_from(temperatures)
         ambient = virtual_sensors.virtual_ambient.temperature_from(temperatures)
 
-        self.virtual_temperatures = VirtualTemperatures(core, surface, ambient)
+        self._virtual_temperatures.update(VirtualTemperatures(core, surface, ambient))
 
-        self.check_overheating()
+        self._check_overheating()
 
-    def check_overheating(self):
-        if not self.current_temperatures:
+    def _check_overheating(self):
+        if not self._current_temperatures:
             return
 
         any_over_temp = False
@@ -228,65 +302,74 @@ class Probe(Device):
 
         # Check T1-T2
         for i in range(0, 2):
-            if self.current_temperatures.values[i] >= self.OVERHEATING_T1_T2_THRESHOLD:
+            if self._current_temperatures.values[i] >= self.OVERHEATING_T1_T2_THRESHOLD:
                 any_over_temp = True
                 overheating_sensor_list.append(i)
 
         # Check T3
-        if self.current_temperatures.values[2] >= self.OVERHEATING_T3_THRESHOLD:
+        if self._current_temperatures.values[2] >= self.OVERHEATING_T3_THRESHOLD:
             any_over_temp = True
             overheating_sensor_list.append(2)
 
         # Check T4
-        if self.current_temperatures.values[3] >= self.OVERHEATING_T4_THRESHOLD:
+        if self._current_temperatures.values[3] >= self.OVERHEATING_T4_THRESHOLD:
             any_over_temp = True
             overheating_sensor_list.append(3)
 
         # Check T5-T8
         for i in range(4, 8):
-            if self.current_temperatures.values[i] >= self.OVERHEATING_T5_T8_THRESHOLD:
+            if self._current_temperatures.values[i] >= self.OVERHEATING_T5_T8_THRESHOLD:
                 any_over_temp = True
                 overheating_sensor_list.append(i)
 
-        self.overheating = any_over_temp
-        self.overheating_sensors = overheating_sensor_list
+        if (
+            self._overheating.value.is_overheating == any_over_temp
+            and self._overheating.value.overheating_sensors == overheating_sensor_list
+        ):
+            return
 
-    def update_probe_status(self, device_status: ProbeStatus, hop_count: Optional[HopCount] = None):
+        self._overheating.update(
+            Overheating(is_overheating=any_over_temp, overheating_sensors=overheating_sensor_list)
+        )
+
+    def _update_probe_status(
+        self, device_status: ProbeStatus, hop_count: Optional[HopCount] = None
+    ):
         # Ignore status messages that have a sequence count lower than any previously received status messages
-        if self.is_old_status_update(device_status):
+        if self._is_old_status_update(device_status):
             return
         updated = False
         if device_status.mode_id.mode == ProbeMode.NORMAL:
-            if self.should_update_normal_mode(hop_count):
-                self.update_id_color_battery(
+            if self._should_update_normal_mode(hop_count):
+                self._update_id_color_battery(
                     device_status.mode_id.id,
                     device_status.mode_id.color,
                     device_status.battery_status_virtual_sensors.battery_status,
                 )
 
-                self.min_sequence_number = device_status.min_sequence_number
-                self.max_sequence_number = device_status.max_sequence_number
+                self._min_sequence_number = device_status.min_sequence_number
+                self._max_sequence_number = device_status.max_sequence_number
 
                 ensure_future(
-                    self.prediction_manager.update_prediction_status(
+                    self._prediction_manager.update_prediction_status(
                         device_status.prediction_status, device_status.max_sequence_number
                     ),
                     name="update_prediction_status[probe]",
                 )
 
-                self.update_temperatures(
+                self._update_temperatures(
                     device_status.temperatures,
                     device_status.battery_status_virtual_sensors.virtual_sensors,
                 )
 
-                self.add_data_to_log(LoggedProbeDataPoint.from_device_status(device_status))
+                self._add_data_to_log(LoggedProbeDataPoint.from_device_status(device_status))
 
-                self.last_normal_mode = datetime.now()
-                self.last_normal_mode_hop_count = hop_count
+                self._last_normal_mode = datetime.now()
+                self._last_normal_mode_hop_count = hop_count
 
                 updated = True
         elif device_status.mode_id.mode == ProbeMode.INSTANT_READ:
-            updated = self.update_instant_read(
+            updated = self._update_instant_read(
                 device_status.temperatures.values[0],
                 probe_id=device_status.mode_id.id,
                 probe_color=device_status.mode_id.color,
@@ -294,15 +377,15 @@ class Probe(Device):
                 hop_count=hop_count,
             )
             if updated:
-                self.min_sequence_number = device_status.min_sequence_number
-                self.max_sequence_number = device_status.max_sequence_number
+                self._min_sequence_number = device_status.min_sequence_number
+                self._max_sequence_number = device_status.max_sequence_number
 
-        ensure_future(self.request_missing_data(), name="request_missing_data[probe]")
+        ensure_future(self._request_missing_data(), name="request_missing_data[probe]")
 
         if updated:
             current = self._get_current_temperature_log()
             if current:
-                self.update_log_percent()
+                self._update_log_percent()
                 missing_range = current.missing_range(
                     device_status.min_sequence_number, device_status.max_sequence_number
                 )
@@ -314,11 +397,11 @@ class Probe(Device):
                         name="request_logs_from[probe]",
                     )
 
-        self.last_status_notification_time = datetime.now()
-        self.update_status_notifications_stale()
+        self._last_status_notification_time = datetime.now()
+        self._update_status_notifications_stale()
         self.last_update_time = datetime.now()
 
-    def update_instant_read(
+    def _update_instant_read(
         self,
         instant_read_value: float,
         probe_id: ProbeID,
@@ -326,28 +409,28 @@ class Probe(Device):
         probe_battery_status: BatteryStatus,
         hop_count: Optional[HopCount],
     ) -> bool:
-        if self.should_update_instant_read(hop_count):
-            self.last_instant_read = datetime.now()
-            self.last_instant_read_hop_count = hop_count
-            self.instant_read_filter.add_reading(instant_read_value)
-            self.instant_read_temperature = instant_read_value
-            self.instant_read_celsius = self.instant_read_filter.values[0]
-            self.instant_read_fahrenheit = self.instant_read_filter.values[1]
+        if self._should_update_instant_read(hop_count):
+            self._last_instant_read = datetime.now()
+            self._last_instant_read_hop_count = hop_count
+            self._instant_read_filter.add_reading(instant_read_value)
+            self._instant_read_temperature = instant_read_value
+            self._instant_read_celsius = self._instant_read_filter.values[0]
+            self._instant_read_fahrenheit = self._instant_read_filter.values[1]
 
-            self.update_id_color_battery(probe_id, probe_color, probe_battery_status)
+            self._update_id_color_battery(probe_id, probe_color, probe_battery_status)
 
             return True
         else:
             return False
 
-    def update_with_session_information(self, session_information: SessionInformation):
+    def _update_with_session_information(self, session_information: SessionInformation):
         LOGGER.info("Updating probe session information")
-        self.session_information = session_information
+        self._session_information = session_information
 
-    def update_log_percent(self) -> None:
+    def _update_log_percent(self) -> None:
         current_log = self._get_current_temperature_log()
-        max_sequence_number = self.max_sequence_number
-        min_sequence_number = self.min_sequence_number
+        max_sequence_number = self._max_sequence_number
+        min_sequence_number = self._min_sequence_number
         if max_sequence_number is None or min_sequence_number is None or current_log is None:
             return
 
@@ -356,13 +439,13 @@ class Probe(Device):
         )
         number_logs_on_probe = int(max_sequence_number - min_sequence_number + 1)
         if number_logs_from_probe == number_logs_on_probe:
-            self.percent_of_logs_synced = 100
+            self._percent_of_logs_synced = 100
         else:
-            self.percent_of_logs_synced = int(
+            self._percent_of_logs_synced = int(
                 float(number_logs_from_probe) / float(number_logs_on_probe) * 100
             )
 
-    def is_old_status_update(self, device_status: ProbeStatus) -> bool:
+    def _is_old_status_update(self, device_status: ProbeStatus) -> bool:
         current_temp_log = self._get_current_temperature_log()
         if current_temp_log:
             max = current_temp_log.data_points[-1]
@@ -372,47 +455,47 @@ class Probe(Device):
         return False
 
     def _get_current_temperature_log(self) -> Optional[ProbeTemperatureLog]:
-        if not self.session_information:
+        if not self._session_information:
             return None
         return next(
             (
                 log
-                for log in self.temperature_logs
-                if log.session_information.session_id == self.session_information.session_id
+                for log in self._temperature_logs
+                if log.session_information.session_id == self._session_information.session_id
             ),
             None,
         )
 
-    def add_data_to_log(self, data_point: LoggedProbeDataPoint) -> None:
+    def _add_data_to_log(self, data_point: LoggedProbeDataPoint) -> None:
         current = self._get_current_temperature_log()
         if current:
             current.append_data_point(data_point=data_point)
-        elif self.session_information:
-            log = ProbeTemperatureLog(self.session_information)
+        elif self._session_information:
+            log = ProbeTemperatureLog(self._session_information)
             log.append_data_point(data_point=data_point)
-            self.temperature_logs.append(log)
+            self._temperature_logs.append(log)
 
-    def process_log_response(self, log_response: LogResponse | NodeReadLogsResponse):
+    def _process_log_response(self, log_response: LogResponse | NodeReadLogsResponse):
         # Process log response
         if isinstance(log_response, LogResponse):
-            self.add_data_to_log(LoggedProbeDataPoint.from_log_response(log_response))
+            self._add_data_to_log(LoggedProbeDataPoint.from_log_response(log_response))
         elif isinstance(log_response, NodeReadLogsResponse):
-            self.add_data_to_log(LoggedProbeDataPoint.from_node_read_logs_response(log_response))
+            self._add_data_to_log(LoggedProbeDataPoint.from_node_read_logs_response(log_response))
 
-    def update_status_notifications_stale(self):
+    def _update_status_notifications_stale(self):
         """Updates the status of whether the status notifications are stale.
         This is based on the time elapsed since the last status notification.
         """
         time_since_last_notification = (
-            datetime.now() - self.last_status_notification_time
+            datetime.now() - self._last_status_notification_time
         ).total_seconds()
-        self.status_notifications_stale = (
+        self._status_notifications_stale = (
             time_since_last_notification > self.STATUS_NOTIFICATION_STALE_TIMEOUT
         )
 
-    async def request_missing_data(self) -> None:
+    async def _request_missing_data(self) -> None:
         tasks: list[Coroutine] = []
-        if self.session_information is None:
+        if self._session_information is None:
             tasks.append(self.device_manager.read_session_info(self))
 
         if self.firmware_version is None:
@@ -444,53 +527,46 @@ class Probe(Device):
         # Placeholder for logging
         pass
 
-    def should_update_normal_mode(self, hop_count: Optional[HopCount]) -> bool:
-        if not hop_count or not self.last_normal_mode:
+    def _should_update_normal_mode(self, hop_count: Optional[HopCount]) -> bool:
+        if not hop_count or not self._last_normal_mode:
             return True
-        time_since_last_normal_mode = (datetime.now() - self.last_normal_mode).total_seconds()
+        time_since_last_normal_mode = (datetime.now() - self._last_normal_mode).total_seconds()
         if time_since_last_normal_mode > self.NORMAL_MODE_LOCK_TIMEOUT:
             return True
 
-        if self.last_normal_mode_hop_count is None:
+        if self._last_normal_mode_hop_count is None:
             return False
 
-        if hop_count.value <= self.last_normal_mode_hop_count.value:
+        if hop_count.value <= self._last_normal_mode_hop_count.value:
             return True
 
         return False
 
-    def should_update_instant_read(self, hop_count: Optional[HopCount]) -> bool:
+    def _should_update_instant_read(self, hop_count: Optional[HopCount]) -> bool:
         # If hopCount is nil, this is direct from a Probe and we should always update.
-        if not hop_count or not self.last_instant_read:
+        if not hop_count or not self._last_instant_read:
             return True
 
         # If we haven't received Instant Read data for more than the lockout period, we should always update.
-        time_since_last_instant_read = (datetime.now() - self.last_instant_read).total_seconds()
+        time_since_last_instant_read = (datetime.now() - self._last_instant_read).total_seconds()
         if time_since_last_instant_read > self.INSTANT_READ_LOCK_TIMEOUT:
             return True
 
         # If we're in the lockout period and the last hop count was nil (i.e. direct from a Probe),
         # we should NOT update.
-        if self.last_instant_read_hop_count is None:
+        if self._last_instant_read_hop_count is None:
             return False
 
         # Compare hop counts and see if we should update.
-        if hop_count.value <= self.last_instant_read_hop_count.value:
+        if hop_count.value <= self._last_instant_read_hop_count.value:
             # This hop count is equal or better priority than the last, so update.
             return True
         else:
             # This hop is lower priority than the last, so do not update.
             return False
 
-    async def request_session_information(self):
+    async def _request_session_information(self):
         await self.device_manager.read_session_info(self)
 
     def __str__(self):
         return f"Probe: {self.unique_identifier}"
-
-
-# Implement the PredictionManagerDelegate interface
-class PredictionManagerDelegate:
-    def publish_prediction_info(self, info):
-        # Implementation for updating prediction info
-        pass
