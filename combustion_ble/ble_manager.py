@@ -18,9 +18,8 @@ from combustion_ble.const import (
 )
 from combustion_ble.exceptions import CombustionError
 from combustion_ble.logger import LOGGER
-from combustion_ble.uart.meatnet.node_request import NodeRequest
-from combustion_ble.uart.request import Request
-from combustion_ble.uart.session_info import SessionInfoRequest
+from combustion_ble.uart import Request, SessionInfoRequest
+from combustion_ble.uart.meatnet import NodeRequest
 from combustion_ble.utilities.asyncio_utils import ensure_future
 
 

@@ -20,9 +20,8 @@ from combustion_ble.logger import LOGGER
 from combustion_ble.prediction.prediction_info import PredictionInfo
 from combustion_ble.prediction.prediction_manager import PredictionManager
 from combustion_ble.probe_temperature_log import ProbeTemperatureLog
-from combustion_ble.uart.log_response import LogResponse
-from combustion_ble.uart.meatnet.node_read_logs_response import NodeReadLogsResponse
-from combustion_ble.uart.session_info import SessionInformation
+from combustion_ble.uart import LogResponse, SessionInformation
+from combustion_ble.uart.meatnet import NodeReadLogsResponse
 from combustion_ble.utilities.asyncio_utils import ensure_future
 from combustion_ble.utilities.monitor import Monitorable, RemoveListener, UpdateListener
 

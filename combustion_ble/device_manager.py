@@ -16,55 +16,37 @@ from combustion_ble.devices.probe import Probe
 from combustion_ble.exceptions import DFUNotImplementedError
 from combustion_ble.logger import LOGGER
 from combustion_ble.message_handlers import MessageHandlers
-from combustion_ble.uart.log_request import LogRequest
-from combustion_ble.uart.log_response import LogResponse
-from combustion_ble.uart.meatnet.node_probe_status_request import NodeProbeStatusRequest
-from combustion_ble.uart.meatnet.node_read_firmware_revision_request import (
-    NodeReadFirmwareRevisionRequest,
-)
-from combustion_ble.uart.meatnet.node_read_firmware_revision_response import (
-    NodeReadFirmwareRevisionResponse,
-)
-from combustion_ble.uart.meatnet.node_read_hardware_revision_request import (
-    NodeReadHardwareRevisionRequest,
-)
-from combustion_ble.uart.meatnet.node_read_hardware_revision_response import (
-    NodeReadHardwareRevisionResponse,
-)
-from combustion_ble.uart.meatnet.node_read_logs_request import NodeReadLogsRequest
-from combustion_ble.uart.meatnet.node_read_logs_response import NodeReadLogsResponse
-from combustion_ble.uart.meatnet.node_read_model_info_request import (
-    NodeReadModelInfoRequest,
-)
-from combustion_ble.uart.meatnet.node_read_model_info_response import (
-    NodeReadModelInfoResponse,
-)
-from combustion_ble.uart.meatnet.node_read_session_info_request import (
-    NodeReadSessionInfoRequest,
-)
-from combustion_ble.uart.meatnet.node_read_session_info_response import (
-    NodeReadSessionInfoResponse,
-)
-from combustion_ble.uart.meatnet.node_request import NodeRequest
-from combustion_ble.uart.meatnet.node_response import NodeResponse
-from combustion_ble.uart.meatnet.node_set_prediction_request import (
-    NodeSetPredictionResponse,
-)
-from combustion_ble.uart.meatnet.node_uart_message import NodeUARTMessage
-from combustion_ble.uart.read_over_temperature import (
+from combustion_ble.uart import (
+    LogRequest,
+    LogResponse,
     ReadOverTemperatureRequest,
     ReadOverTemperatureResponse,
-)
-from combustion_ble.uart.response import Response
-from combustion_ble.uart.response_from_data import responses_from_data
-from combustion_ble.uart.session_info import (
+    Response,
     SessionInfoRequest,
     SessionInfoResponse,
     SessionInformation,
+    SetColorResponse,
+    SetIDResponse,
+    SetPredictionResponse,
+    responses_from_data,
 )
-from combustion_ble.uart.set_color import SetColorResponse
-from combustion_ble.uart.set_id import SetIDResponse
-from combustion_ble.uart.set_prediction import SetPredictionResponse
+from combustion_ble.uart.meatnet import (
+    NodeProbeStatusRequest,
+    NodeReadFirmwareRevisionRequest,
+    NodeReadFirmwareRevisionResponse,
+    NodeReadHardwareRevisionRequest,
+    NodeReadHardwareRevisionResponse,
+    NodeReadLogsRequest,
+    NodeReadLogsResponse,
+    NodeReadModelInfoRequest,
+    NodeReadModelInfoResponse,
+    NodeReadSessionInfoRequest,
+    NodeReadSessionInfoResponse,
+    NodeRequest,
+    NodeResponse,
+    NodeSetPredictionResponse,
+    NodeUARTMessage,
+)
 
 DeviceListener = Callable[[list[Device], list[Device]], None]
 
