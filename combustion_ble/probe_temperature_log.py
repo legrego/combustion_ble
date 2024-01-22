@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from combustion_ble.logged_probe_data_count import LoggedProbeDataPoint
-from combustion_ble.uart.session_info import SessionInformation
+from combustion_ble.uart import SessionInformation
 
 
 class ProbeTemperatureLog:

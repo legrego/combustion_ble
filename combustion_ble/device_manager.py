@@ -1,6 +1,6 @@
 """Device Manager."""
 import asyncio
-from typing import Optional
+from typing import Callable, Optional
 
 from combustion_ble.ble_data.advertising_data import (
     AdvertisingData,
@@ -16,55 +16,39 @@ from combustion_ble.devices.probe import Probe
 from combustion_ble.exceptions import DFUNotImplementedError
 from combustion_ble.logger import LOGGER
 from combustion_ble.message_handlers import MessageHandlers
-from combustion_ble.uart.log_request import LogRequest
-from combustion_ble.uart.log_response import LogResponse
-from combustion_ble.uart.meatnet.node_probe_status_request import NodeProbeStatusRequest
-from combustion_ble.uart.meatnet.node_read_firmware_revision_request import (
-    NodeReadFirmwareRevisionRequest,
-)
-from combustion_ble.uart.meatnet.node_read_firmware_revision_response import (
-    NodeReadFirmwareRevisionResponse,
-)
-from combustion_ble.uart.meatnet.node_read_hardware_revision_request import (
-    NodeReadHardwareRevisionRequest,
-)
-from combustion_ble.uart.meatnet.node_read_hardware_revision_response import (
-    NodeReadHardwareRevisionResponse,
-)
-from combustion_ble.uart.meatnet.node_read_logs_request import NodeReadLogsRequest
-from combustion_ble.uart.meatnet.node_read_logs_response import NodeReadLogsResponse
-from combustion_ble.uart.meatnet.node_read_model_info_request import (
-    NodeReadModelInfoRequest,
-)
-from combustion_ble.uart.meatnet.node_read_model_info_response import (
-    NodeReadModelInfoResponse,
-)
-from combustion_ble.uart.meatnet.node_read_session_info_request import (
-    NodeReadSessionInfoRequest,
-)
-from combustion_ble.uart.meatnet.node_read_session_info_response import (
-    NodeReadSessionInfoResponse,
-)
-from combustion_ble.uart.meatnet.node_request import NodeRequest
-from combustion_ble.uart.meatnet.node_response import NodeResponse
-from combustion_ble.uart.meatnet.node_set_prediction_request import (
-    NodeSetPredictionResponse,
-)
-from combustion_ble.uart.meatnet.node_uart_message import NodeUARTMessage
-from combustion_ble.uart.read_over_temperature import (
+from combustion_ble.uart import (
+    LogRequest,
+    LogResponse,
     ReadOverTemperatureRequest,
     ReadOverTemperatureResponse,
-)
-from combustion_ble.uart.response import Response
-from combustion_ble.uart.response_from_data import responses_from_data
-from combustion_ble.uart.session_info import (
+    Response,
     SessionInfoRequest,
     SessionInfoResponse,
     SessionInformation,
+    SetColorResponse,
+    SetIDResponse,
+    SetPredictionResponse,
+    responses_from_data,
 )
-from combustion_ble.uart.set_color import SetColorResponse
-from combustion_ble.uart.set_id import SetIDResponse
-from combustion_ble.uart.set_prediction import SetPredictionResponse
+from combustion_ble.uart.meatnet import (
+    NodeProbeStatusRequest,
+    NodeReadFirmwareRevisionRequest,
+    NodeReadFirmwareRevisionResponse,
+    NodeReadHardwareRevisionRequest,
+    NodeReadHardwareRevisionResponse,
+    NodeReadLogsRequest,
+    NodeReadLogsResponse,
+    NodeReadModelInfoRequest,
+    NodeReadModelInfoResponse,
+    NodeReadSessionInfoRequest,
+    NodeReadSessionInfoResponse,
+    NodeRequest,
+    NodeResponse,
+    NodeSetPredictionResponse,
+    NodeUARTMessage,
+)
+
+DeviceListener = Callable[[list[Device], list[Device]], None]
 
 
 class DeviceManager(BleManagerDelegate):
@@ -109,6 +93,7 @@ class DeviceManager(BleManagerDelegate):
         self.devices: dict[str, Device] = {}
         self.connection_manager = ConnectionManager(self)
         self.message_handlers = MessageHandlers()
+        self.device_listeners: list[DeviceListener] = []
         DeviceManager.shared = self
         BleManager.shared.delegate = self
         self.timer_task: asyncio.Task | None = asyncio.create_task(self._start_timers())
@@ -116,6 +101,14 @@ class DeviceManager(BleManagerDelegate):
     async def init_bluetooth(self):
         """Initialize bluetooth operations."""
         await BleManager.shared.init_bluetooth()
+
+    def add_device_listener(self, listener: DeviceListener) -> None:
+        """Add a device listener to be notified when devices are added or removed."""
+        self.device_listeners.append(listener)
+
+    def clear_device_listeners(self) -> None:
+        """Remove all device listeners."""
+        self.device_listeners = []
 
     async def async_stop(self):
         """Stop all asynchronous tasks and BLE scanning. Must be called prior to terminating your application."""
@@ -136,7 +129,7 @@ class DeviceManager(BleManagerDelegate):
     def _update_device_stale_status(self):
         # Update the stale status of devices
         for key, device in self.devices.items():
-            device.update_device_stale()
+            device._update_device_stale()
 
     def add_simulated_probe(self):
         # Placeholder for adding a simulated probe
@@ -150,10 +143,14 @@ class DeviceManager(BleManagerDelegate):
 
     def _add_device(self, device: Device):
         self.devices[device.unique_identifier] = device
+        for listener in self.device_listeners:
+            listener([device], [])
 
     def _clear_device(self, device: Device):
         if device.unique_identifier in self.devices:
             del self.devices[device.unique_identifier]
+            for listener in self.device_listeners:
+                listener([], [device])
 
     def get_probes(self) -> list[Probe]:
         return [device for device in self.devices.values() if isinstance(device, Probe)]
@@ -340,17 +337,17 @@ class DeviceManager(BleManagerDelegate):
         device = self.find_device_by_ble_identifier(identifier)
         if not device:
             return
-        device.update_connection_state(Device.ConnectionState.CONNECTED)
+        device._update_connection_state(Device.ConnectionState.CONNECTED)
 
     def did_fail_to_connect_to(self, identifier):
         device = self.find_device_by_ble_identifier(identifier)
         if device:
-            device.update_connection_state(Device.ConnectionState.FAILED)
+            device._update_connection_state(Device.ConnectionState.FAILED)
 
     def did_disconnect_from(self, identifier: str):
         device = self.find_device_by_ble_identifier(identifier)
         if device:
-            device.update_connection_state(Device.ConnectionState.DISCONNECTED)
+            device._update_connection_state(Device.ConnectionState.DISCONNECTED)
             self.message_handlers.clear_handlers_for_device(identifier)
 
     def update_device_hw_revision(self, identifier: str, revision: str):
@@ -374,14 +371,14 @@ class DeviceManager(BleManagerDelegate):
     def update_device_with_status(self, identifier: str, status: ProbeStatus):
         probe = self.find_device_by_ble_identifier(identifier)
         if probe and isinstance(probe, Probe):
-            probe.update_probe_status(status)
+            probe._update_probe_status(status)
             self.connection_manager.received_status_for(probe, direct_connection=True)
 
     def update_device_with_node_status(
         self, serial_number: int, status: ProbeStatus, hop_count: HopCount
     ):
         if probe := self.find_probe_by_serial_number(serial_number):
-            probe.update_probe_status(status, hop_count)
+            probe._update_probe_status(status, hop_count)
             self.connection_manager.received_status_for(probe, direct_connection=False)
 
     def update_device_with_advertising(
@@ -443,13 +440,13 @@ class DeviceManager(BleManagerDelegate):
         if not log_response.success:
             return
         if (probe := self.find_device_by_ble_identifier(identifier)) and isinstance(probe, Probe):
-            probe.process_log_response(log_response)
+            probe._process_log_response(log_response)
 
     def update_device_with_session_information(
         self, identifier: str, session_information: SessionInformation
     ):
         if (probe := self.find_device_by_ble_identifier(identifier)) and isinstance(probe, Probe):
-            probe.update_with_session_information(session_information)
+            probe._update_with_session_information(session_information)
 
     def handle_uart_data(self, identifier: str, data: bytes):
         """Processes data received over UART, which could be Responses and/or Requests depending on the source."""
@@ -526,8 +523,8 @@ class DeviceManager(BleManagerDelegate):
         elif isinstance(response, NodeReadSessionInfoResponse):
             probe = self.find_probe_by_serial_number(serial_number=response.probe_serial_number)
             if probe:
-                probe.update_with_session_information(response.info)
+                probe._update_with_session_information(response.info)
         elif isinstance(response, NodeReadLogsResponse):
             probe = self.find_probe_by_serial_number(serial_number=response.probe_serial_number)
             if probe:
-                probe.process_log_response(log_response=response)
+                probe._process_log_response(log_response=response)

@@ -9,6 +9,7 @@ from combustion_ble.ble_data.prediction_status import (
     PredictionType,
 )
 from combustion_ble.device_manager import DeviceManager
+from combustion_ble.devices.probe import VirtualTemperatures
 from combustion_ble.version import VERSION, VERSION_SHORT
 
 __all__ = [
@@ -20,4 +21,5 @@ __all__ = [
     "PredictionStatus",
     "PredictionType",
     "PredictionState",
+    "VirtualTemperatures",
 ]

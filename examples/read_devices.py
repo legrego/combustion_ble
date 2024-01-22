@@ -7,7 +7,7 @@ from rich.table import Table
 
 from combustion_ble.device_manager import DeviceManager
 from combustion_ble.devices.probe import Probe
-from examples.example_utils import (
+from examples._example_utils import (
     configure_logging,
     format_connection_state,
     format_device_name,
@@ -32,7 +32,7 @@ async def main():
             name = format_device_name(device)
             connection = format_connection_state(device.connection_state)
             if isinstance(device, Probe):
-                temperatures = format_temperatures(device.current_temperatures)
+                temperatures = format_temperatures(device._current_temperatures)
                 table.add_row(name, connection, str(device.last_update_time), temperatures)
             else:
                 details = f"fw: {device.firmware_version} hw: {device.hardware_revision}"

@@ -1,13 +1,13 @@
 from datetime import datetime
 from typing import Callable
 
-from combustion_ble.uart.meatnet.node_set_prediction_request import (
-    NodeSetPredictionResponse,
+from combustion_ble.uart import (
+    ReadOverTemperatureResponse,
+    SetColorResponse,
+    SetIDResponse,
+    SetPredictionResponse,
 )
-from combustion_ble.uart.read_over_temperature import ReadOverTemperatureResponse
-from combustion_ble.uart.set_color import SetColorResponse
-from combustion_ble.uart.set_id import SetIDResponse
-from combustion_ble.uart.set_prediction import SetPredictionResponse
+from combustion_ble.uart.meatnet import NodeSetPredictionResponse
 
 SuccessHandler = Callable[[bool], None]
 ReadOverTemperatureHandler = Callable[[bool, bool], None]

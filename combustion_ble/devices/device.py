@@ -54,7 +54,7 @@ class Device:
         self.dfu_service_controller = None
         self.device_manager: "DeviceManager" = device_manager
 
-    def update_connection_state(self, state: str):
+    def _update_connection_state(self, state: str):
         self.connection_state = state
 
         if self.connection_state == Device.ConnectionState.DISCONNECTED:
@@ -66,7 +66,7 @@ class Device:
         ):
             ensure_future(self.connect(), name="device.connect[update_connection_state]")
 
-    def update_device_stale(self):
+    def _update_device_stale(self):
         self.stale = (datetime.now() - self.last_update_time).total_seconds() > self.STALE_TIMEOUT
         if self.stale:
             self.is_connectable = False

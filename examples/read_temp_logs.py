@@ -8,13 +8,13 @@ from rich.table import Table
 
 from combustion_ble.device_manager import DeviceManager
 from combustion_ble.devices.probe import Probe
-from examples.example_utils import configure_logging
+from examples._example_utils import configure_logging
 
 
 def generate_data_points(probe: Probe) -> list[list[tuple[datetime, float]]]:
     data_points: list[list[tuple[datetime, float]]] = []
 
-    for log in probe.temperature_logs:
+    for log in probe._temperature_logs:
         # Skip log if start time has not been set
         if not (session_start_time := log.start_time):
             print("skipping logs without start time")
@@ -45,10 +45,10 @@ async def main():
         table = Table()
         if probes:
             probe = probes[0]
-            probe.update_log_percent()
+            probe._update_log_percent()
             table = Table(
-                caption="Percent synced: " + str(probe.percent_of_logs_synced)
-                if probe.percent_of_logs_synced
+                caption="Percent synced: " + str(probe._percent_of_logs_synced)
+                if probe._percent_of_logs_synced
                 else "0"
             )
             table.add_column("Timestamp")
