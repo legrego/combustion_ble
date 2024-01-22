@@ -23,6 +23,7 @@ async def main():
     def generate_table():
         table = Table()
         table.add_column("Device")
+        table.add_column("Versions")
         table.add_column("State")
         table.add_column("Last update time")
         table.add_column("Details")
@@ -31,12 +32,15 @@ async def main():
         for device in devices:
             name = format_device_name(device)
             connection = format_connection_state(device.connection_state)
+            versions = f"fw: {device.firmware_version} hw: {device.hardware_revision}"
             if isinstance(device, Probe):
                 temperatures = format_temperatures(device._current_temperatures)
-                table.add_row(name, connection, str(device.last_update_time), temperatures)
+                table.add_row(
+                    name, versions, connection, str(device.last_update_time), temperatures
+                )
             else:
-                details = f"fw: {device.firmware_version} hw: {device.hardware_revision}"
-                table.add_row(name, connection, str(device.last_update_time), details)
+                details = f"RSSI: {device.rssi}"
+                table.add_row(name, versions, connection, str(device.last_update_time), details)
 
         return table
 

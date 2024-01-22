@@ -39,8 +39,8 @@ class Device:
         self.unique_identifier: str = unique_identifier
         self.ble_identifier: Optional[str] = ble_identifier if ble_identifier else None
         self.rssi: int = rssi if rssi is not None else self.MIN_RSSI
-        self.firmware_version: Optional[str] = "IDK"
-        self.hardware_revision: Optional[str] = "IDK"
+        self.firmware_version: Optional[str] = None
+        self.hardware_revision: Optional[str] = None
         self.sku: Optional[str] = None
         self.manufacturing_lot: Optional[str] = None
         self.connection_state: str = Device.ConnectionState.DISCONNECTED
