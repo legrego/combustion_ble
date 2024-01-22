@@ -21,7 +21,11 @@ def _done_callback(task: asyncio.Task[Any]):
         # and a single failure isn't something to be concerned about in most cases.
         # TODO: handle other backend implementations.
         if be.__str__ == "disconnected":
-            LOGGER.debug("Exception raised by task as a result of client disconnect = %r", task, exc_info=True)
+            LOGGER.debug(
+                "Exception raised by task as a result of client disconnect = %r",
+                task,
+                exc_info=True,
+            )
         else:
             LOGGER.exception("Exception raised by task = %r", task)
     except Exception:
