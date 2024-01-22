@@ -41,7 +41,7 @@ def format_virtual_temperatures(temperature: VirtualTemperatures):
 
 def format_device_name(device: Device):
     if isinstance(device, Probe):
-        device_name = Text(f"Probe {device.serial_number}")
+        device_name = Text(f"Probe {device.serial_number_string}")
     elif isinstance(device, MeatNetNode):
         ble_address = device.ble_identifier[-5:] if device.ble_identifier else ""
         device_name = Text(f"MeatNet Node {ble_address}")

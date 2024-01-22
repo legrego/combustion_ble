@@ -60,6 +60,31 @@ class BleManagerDelegate:
         pass
 
 
+class PendingGattReads:
+    """Track pending GATT Read requests."""
+
+    def __init__(self) -> None:
+        self.pending_reads: dict[str, set[int]] = {}
+
+    def add(self, identifier: str, char: BleakGATTCharacteristic):
+        if identifier not in self.pending_reads:
+            self.pending_reads[identifier] = set[int]()
+        reads: set[int] = self.pending_reads.get(identifier, set[int]())
+        reads.add(char.handle)
+
+    def remove(self, identifier: str, char: BleakGATTCharacteristic | None):
+        if identifier not in self.pending_reads or char is None:
+            return
+        reads: set[int] = self.pending_reads.get(identifier, set[int]())
+        reads.discard(char.handle)
+
+    def has(self, identifier: str, char: BleakGATTCharacteristic | None) -> bool:
+        if identifier not in self.pending_reads or char is None:
+            return False
+        reads: set[int] = self.pending_reads.get(identifier, set[int]())
+        return char.handle in reads
+
+
 class BleManager:
     shared: "BleManager" = None  # type: ignore
 
@@ -73,6 +98,8 @@ class BleManager:
         self.hw_revision_characteristics: dict[str, BleakGATTCharacteristic] = {}
         self.serial_number_characteristics: dict[str, BleakGATTCharacteristic] = {}
         self.model_number_characteristics: dict[str, BleakGATTCharacteristic] = {}
+        self._pending_gatt_reads = PendingGattReads()
+        self._pending_connections: set[str] = set()
         self.is_stopping = False
 
     async def init_bluetooth(self, scanner: Optional[BleakScanner] = None):
@@ -98,13 +125,16 @@ class BleManager:
             except Exception:
                 LOGGER.exception("Error stopping Bleak scanner")
             if self.clients:
-                for client in self.clients:
+                client_list = [c for c in self.clients]
+                for client in client_list:
                     try:
                         if self.clients[client].is_connected:
                             await self.clients[client].disconnect()
                     except Exception:
                         LOGGER.exception("Error disconnecting client")
         self.clients = {}
+        self._pending_connections = set()
+        self._pending_gatt_reads = PendingGattReads()
         self.scanner = None
         self.is_stopping = False
 
@@ -126,11 +156,21 @@ class BleManager:
     async def connect(self, identifier: str):
         if not self.delegate:
             return
-        LOGGER.debug("Connecting to [%s]", identifier)
-        client = BleakClient(
-            identifier, disconnected_callback=self.disconnected_callback(identifier)
-        )
+        if identifier in self._pending_connections:
+            LOGGER.debug("Ignoring concurrent connect request for [%s]", identifier)
+            return
+
+        if identifier in self.clients:
+            LOGGER.debug("Connecting to [%s] via established client", identifier)
+            client = self.clients[identifier]
+        else:
+            LOGGER.debug("Connecting to [%s] via new client", identifier)
+            client = BleakClient(
+                identifier, disconnected_callback=self.disconnected_callback(identifier)
+            )
+
         successful = False
+        self._pending_connections.add(identifier)
         try:
             await client.connect()
             LOGGER.debug("Connection to [%s] successful", identifier)
@@ -139,6 +179,8 @@ class BleManager:
         except Exception as ex:
             LOGGER.debug("Failed connecting to [%s]: %s", identifier, ex)
             self.delegate.did_fail_to_connect_to(identifier)
+        finally:
+            self._pending_connections.discard(identifier)
 
         if successful:
             self.delegate.did_connect_to(identifier)
@@ -195,52 +237,84 @@ class BleManager:
         if connection_peripheral:
             uart_char = self.fw_revision_characteristics.get(identifier)
             client = self.clients.get(identifier)
+            if self._pending_gatt_reads.has(identifier, uart_char):
+                LOGGER.debug(
+                    "Discarding concurent request to read_firmware_revision for [%s]", identifier
+                )
+                return
             try:
                 if client and client.is_connected and uart_char and self.delegate:
+                    self._pending_gatt_reads.add(identifier, uart_char)
                     data = await client.read_gatt_char(uart_char, use_cached=True)
                     fw_version = data.decode(encoding="utf-8")
                     self.delegate.update_device_fw_version(identifier, fw_version)
             except BleakError as be:
                 LOGGER.error("Error reading firmware version from [%s]: %s", identifier, be)
+            finally:
+                self._pending_gatt_reads.remove(identifier, uart_char)
 
     async def read_hardware_revision(self, identifier: str) -> None:
         connection_peripheral = self.get_connected_peripheral(identifier)
         if connection_peripheral:
             uart_char = self.hw_revision_characteristics.get(identifier)
             client = self.clients.get(identifier)
+            if self._pending_gatt_reads.has(identifier, uart_char):
+                LOGGER.debug(
+                    "Discarding concurent request to read_hardware_revision for [%s]", identifier
+                )
+                return
             try:
                 if client and client.is_connected and uart_char and self.delegate:
+                    self._pending_gatt_reads.add(identifier, uart_char)
                     data = await client.read_gatt_char(uart_char, use_cached=True)
                     hw_revision = data.decode(encoding="utf-8")
                     self.delegate.update_device_hw_revision(identifier, hw_revision)
             except BleakError as be:
                 LOGGER.error("Error reading hardware version from [%s]: %s", identifier, be)
+            finally:
+                self._pending_gatt_reads.remove(identifier, uart_char)
 
     async def read_serial_number(self, identifier: str) -> None:
         connection_peripheral = self.get_connected_peripheral(identifier)
         if connection_peripheral:
             uart_char = self.serial_number_characteristics.get(identifier)
             client = self.clients.get(identifier)
+            if self._pending_gatt_reads.has(identifier, uart_char):
+                LOGGER.debug(
+                    "Discarding concurent request to read_serial_number for [%s]", identifier
+                )
+                return
             try:
                 if client and client.is_connected and uart_char and self.delegate:
+                    self._pending_gatt_reads.add(identifier, uart_char)
                     data = await client.read_gatt_char(uart_char, use_cached=True)
                     serial_number = data.decode(encoding="utf-8")
                     self.delegate.update_device_serial_number(identifier, serial_number)
             except BleakError as be:
                 LOGGER.error("Error reading serial number from [%s]: %s", identifier, be)
+            finally:
+                self._pending_gatt_reads.remove(identifier, uart_char)
 
     async def read_model_number(self, identifier: str) -> None:
         connection_peripheral = self.get_connected_peripheral(identifier)
         if connection_peripheral:
             uart_char = self.model_number_characteristics.get(identifier)
             client = self.clients.get(identifier)
+            if self._pending_gatt_reads.has(identifier, uart_char):
+                LOGGER.debug(
+                    "Discarding concurent request to read_model_number for [%s]", identifier
+                )
+                return
             try:
                 if client and client.is_connected and uart_char and self.delegate:
+                    self._pending_gatt_reads.add(identifier, uart_char)
                     data = await client.read_gatt_char(uart_char, use_cached=True)
                     model_number = data.decode(encoding="utf-8")
                     self.delegate.update_device_model_info(identifier, model_number)
             except BleakError as be:
                 LOGGER.error("Error reading model number from [%s]: %s", identifier, be)
+            finally:
+                self._pending_gatt_reads.remove(identifier, uart_char)
 
     def get_connected_peripheral(self, identifier: str) -> BleakClient | None:
         connected_clients = [

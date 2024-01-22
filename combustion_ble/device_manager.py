@@ -115,10 +115,20 @@ class DeviceManager(BleManagerDelegate):
         if self.timer_task:
             self.timer_task.cancel()
             self.timer_task = None
+
+        # Attempt to disconnect from all devices.
+        for device in self.devices:
+            try:
+                await self.devices[device].disconnect()
+            except Exception:
+                LOGGER.exception(
+                    "Error disconnecting client [%s] during DeviceManager shutdown.", device
+                )
+
         try:
             await BleManager.shared.stop_bluetooth()
         except Exception:
-            LOGGER.exception("Error stopping BleManager")
+            LOGGER.exception("Error stopping BleManager during DeviceManager shutdown.")
 
     async def _start_timers(self):
         while True:
@@ -206,6 +216,7 @@ class DeviceManager(BleManagerDelegate):
     async def _connect_to_device(self, device: Device):
         if device.ble_identifier:
             # If this device has a BLE identifier (advertisements are directly detected rather than through MeatNet), attempt to connect to it.
+            device._update_connection_state(Device.ConnectionState.CONNECTING)
             await BleManager.shared.connect(device.ble_identifier)
 
     async def _disconnect_from_device(self, device: Device):
