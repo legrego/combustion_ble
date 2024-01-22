@@ -127,7 +127,9 @@ class BleManager:
         if not self.delegate:
             return
         LOGGER.debug("Connecting to [%s]", identifier)
-        client = BleakClient(identifier, disconnected_callback=self.disconnected_callback(identifier))
+        client = BleakClient(
+            identifier, disconnected_callback=self.disconnected_callback(identifier)
+        )
         successful = False
         try:
             await client.connect()

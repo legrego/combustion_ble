@@ -4,10 +4,14 @@ from signal import SIGINT, SIGTERM
 
 from rich.console import Console
 
+from combustion_ble import VirtualTemperatures
 from combustion_ble.device_manager import DeviceManager
 from combustion_ble.devices import Probe
-from combustion_ble import VirtualTemperatures
-from examples._example_utils import configure_logging, format_device_name, format_virtual_temperatures
+from examples._example_utils import (
+    configure_logging,
+    format_device_name,
+    format_virtual_temperatures,
+)
 
 
 async def main():
@@ -22,7 +26,9 @@ async def main():
 
     def create_temperature_listener(probe: Probe):
         def listener(virtual_temps: VirtualTemperatures):
-            console.log(f"{format_device_name(probe)}; Temperatures: {format_virtual_temperatures(virtual_temps)}")
+            console.log(
+                f"{format_device_name(probe)}; Temperatures: {format_virtual_temperatures(virtual_temps)}"
+            )
 
         return listener
 
