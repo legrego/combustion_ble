@@ -127,9 +127,7 @@ class BleManager:
         if not self.delegate:
             return
         LOGGER.debug("Connecting to [%s]", identifier)
-        client = BleakClient(
-            identifier, disconnected_callback=self.disconnected_callback(identifier)
-        )
+        client = BleakClient(identifier, disconnected_callback=self.disconnected_callback(identifier))
         successful = False
         try:
             await client.connect()
@@ -197,7 +195,7 @@ class BleManager:
             client = self.clients.get(identifier)
             try:
                 if client and client.is_connected and uart_char and self.delegate:
-                    data = await client.read_gatt_char(uart_char)
+                    data = await client.read_gatt_char(uart_char, use_cached=True)
                     fw_version = data.decode(encoding="utf-8")
                     self.delegate.update_device_fw_version(identifier, fw_version)
             except BleakError as be:
@@ -210,7 +208,7 @@ class BleManager:
             client = self.clients.get(identifier)
             try:
                 if client and client.is_connected and uart_char and self.delegate:
-                    data = await client.read_gatt_char(uart_char)
+                    data = await client.read_gatt_char(uart_char, use_cached=True)
                     hw_revision = data.decode(encoding="utf-8")
                     self.delegate.update_device_hw_revision(identifier, hw_revision)
             except BleakError as be:
@@ -223,7 +221,7 @@ class BleManager:
             client = self.clients.get(identifier)
             try:
                 if client and client.is_connected and uart_char and self.delegate:
-                    data = await client.read_gatt_char(uart_char)
+                    data = await client.read_gatt_char(uart_char, use_cached=True)
                     serial_number = data.decode(encoding="utf-8")
                     self.delegate.update_device_serial_number(identifier, serial_number)
             except BleakError as be:
@@ -236,7 +234,7 @@ class BleManager:
             client = self.clients.get(identifier)
             try:
                 if client and client.is_connected and uart_char and self.delegate:
-                    data = await client.read_gatt_char(uart_char)
+                    data = await client.read_gatt_char(uart_char, use_cached=True)
                     model_number = data.decode(encoding="utf-8")
                     self.delegate.update_device_model_info(identifier, model_number)
             except BleakError as be:

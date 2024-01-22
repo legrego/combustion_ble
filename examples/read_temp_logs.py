@@ -8,7 +8,7 @@ from rich.table import Table
 
 from combustion_ble.device_manager import DeviceManager
 from combustion_ble.devices.probe import Probe
-from examples.example_utils import configure_logging
+from examples._example_utils import configure_logging
 
 
 def generate_data_points(probe: Probe) -> list[list[tuple[datetime, float]]]:
@@ -25,9 +25,7 @@ def generate_data_points(probe: Probe) -> list[list[tuple[datetime, float]]]:
             if dp.sequence_num and dp.temperatures:
                 second_diff = dp.sequence_num * log.session_information.sample_period / 1000
                 data_time_stamp = session_start_time + timedelta(seconds=second_diff)
-                data_points.append(
-                    [(data_time_stamp, round(temp, 1)) for temp in dp.temperatures.values]
-                )
+                data_points.append([(data_time_stamp, round(temp, 1)) for temp in dp.temperatures.values])
                 count += 1
                 if count > 20:
                     break

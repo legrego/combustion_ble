@@ -7,7 +7,7 @@ from rich.table import Table
 
 from combustion_ble.device_manager import DeviceManager
 from combustion_ble.devices.probe import Probe
-from examples.example_utils import (
+from examples._example_utils import (
     configure_logging,
     format_connection_state,
     format_device_name,

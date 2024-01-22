@@ -16,7 +16,6 @@ from combustion_ble.ble_data.virtual_sensors import VirtualSensors
 from combustion_ble.devices.device import Device
 from combustion_ble.instant_read_filter import InstantReadFilter
 from combustion_ble.logged_probe_data_count import LoggedProbeDataPoint
-from combustion_ble.logger import LOGGER
 from combustion_ble.prediction.prediction_info import PredictionInfo
 from combustion_ble.prediction.prediction_manager import PredictionManager
 from combustion_ble.probe_temperature_log import ProbeTemperatureLog
@@ -103,9 +102,7 @@ class Probe(Device):
         self._battery_status = Monitorable(BatteryStatus.OK)
         self._virtual_sensors: Optional[VirtualSensors] = None
         self._prediction_info: Monitorable[Optional[PredictionInfo]] = Monitorable(None)
-        self._virtual_temperatures: Monitorable[VirtualTemperatures] = Monitorable(
-            VirtualTemperatures()
-        )
+        self._virtual_temperatures: Monitorable[VirtualTemperatures] = Monitorable(VirtualTemperatures())
         self._temperature_logs: list[ProbeTemperatureLog] = []
         self._overheating: Monitorable[Overheating] = Monitorable(
             Overheating(is_overheating=False, overheating_sensors=[])
@@ -144,9 +141,7 @@ class Probe(Device):
         """The current battery status."""
         return self._battery_status.value
 
-    def add_battery_status_listener(
-        self, listener: UpdateListener[BatteryStatus]
-    ) -> RemoveListener:
+    def add_battery_status_listener(self, listener: UpdateListener[BatteryStatus]) -> RemoveListener:
         """Add a listener for battery status changes."""
         return self._battery_status.add_update_listener(listener)
 
@@ -155,9 +150,7 @@ class Probe(Device):
         """The current virtual temperatures."""
         return self._battery_status.value
 
-    def add_virtual_temperatures_listener(
-        self, listener: UpdateListener[VirtualTemperatures]
-    ) -> RemoveListener:
+    def add_virtual_temperatures_listener(self, listener: UpdateListener[VirtualTemperatures]) -> RemoveListener:
         """Add a listener for virtual temperatures changes."""
         return self._virtual_temperatures.add_update_listener(listener)
 
@@ -175,9 +168,7 @@ class Probe(Device):
         """Prediction information."""
         return self._prediction_info.value
 
-    def add_prediction_info_listener(
-        self, listener: UpdateListener[Optional[PredictionInfo]]
-    ) -> RemoveListener:
+    def add_prediction_info_listener(self, listener: UpdateListener[Optional[PredictionInfo]]) -> RemoveListener:
         """Add a listener for prediction info changes."""
         return self._prediction_info.add_update_listener(listener)
 
@@ -207,9 +198,7 @@ class Probe(Device):
         and updates whether status notifications are stale.
         """
         if self._last_instant_read:
-            time_since_last_instant_read = (
-                datetime.now() - self._last_instant_read
-            ).total_seconds()
+            time_since_last_instant_read = (datetime.now() - self._last_instant_read).total_seconds()
             if time_since_last_instant_read > self.INSTANT_READ_STALE_TIMEOUT:
                 self._instant_read_celsius = None
                 self._instant_read_fahrenheit = None
@@ -278,9 +267,7 @@ class Probe(Device):
         self._color = probe_color
         self._battery_status.update(probe_battery_status)
 
-    def _update_temperatures(
-        self, temperatures: ProbeTemperatures, virtual_sensors: VirtualSensors
-    ):
+    def _update_temperatures(self, temperatures: ProbeTemperatures, virtual_sensors: VirtualSensors):
         self._current_temperatures = temperatures
         self._virtual_sensors = virtual_sensors
 
@@ -331,9 +318,7 @@ class Probe(Device):
             Overheating(is_overheating=any_over_temp, overheating_sensors=overheating_sensor_list)
         )
 
-    def _update_probe_status(
-        self, device_status: ProbeStatus, hop_count: Optional[HopCount] = None
-    ):
+    def _update_probe_status(self, device_status: ProbeStatus, hop_count: Optional[HopCount] = None):
         # Ignore status messages that have a sequence count lower than any previously received status messages
         if self._is_old_status_update(device_status):
             return
@@ -423,7 +408,6 @@ class Probe(Device):
             return False
 
     def _update_with_session_information(self, session_information: SessionInformation):
-        LOGGER.info("Updating probe session information")
         self._session_information = session_information
 
     def _update_log_percent(self) -> None:
@@ -433,16 +417,12 @@ class Probe(Device):
         if max_sequence_number is None or min_sequence_number is None or current_log is None:
             return
 
-        number_logs_from_probe = current_log.logs_in_range(
-            [min_sequence_number, max_sequence_number]
-        )
+        number_logs_from_probe = current_log.logs_in_range([min_sequence_number, max_sequence_number])
         number_logs_on_probe = int(max_sequence_number - min_sequence_number + 1)
         if number_logs_from_probe == number_logs_on_probe:
             self._percent_of_logs_synced = 100
         else:
-            self._percent_of_logs_synced = int(
-                float(number_logs_from_probe) / float(number_logs_on_probe) * 100
-            )
+            self._percent_of_logs_synced = int(float(number_logs_from_probe) / float(number_logs_on_probe) * 100)
 
     def _is_old_status_update(self, device_status: ProbeStatus) -> bool:
         current_temp_log = self._get_current_temperature_log()
@@ -485,12 +465,8 @@ class Probe(Device):
         """Updates the status of whether the status notifications are stale.
         This is based on the time elapsed since the last status notification.
         """
-        time_since_last_notification = (
-            datetime.now() - self._last_status_notification_time
-        ).total_seconds()
-        self._status_notifications_stale = (
-            time_since_last_notification > self.STATUS_NOTIFICATION_STALE_TIMEOUT
-        )
+        time_since_last_notification = (datetime.now() - self._last_status_notification_time).total_seconds()
+        self._status_notifications_stale = time_since_last_notification > self.STATUS_NOTIFICATION_STALE_TIMEOUT
 
     async def _request_missing_data(self) -> None:
         tasks: list[Coroutine] = []
