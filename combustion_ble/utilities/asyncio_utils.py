@@ -20,7 +20,7 @@ def _done_callback(task: asyncio.Task[Any]):
         # It remains to be seen if this is a good idea or not. Many bleak operations are retried by us,
         # and a single failure isn't something to be concerned about in most cases.
         # TODO: handle other backend implementations.
-        if be.__str__ == "disconnected":
+        if be.__str__() == "disconnected":
             LOGGER.debug(
                 "Exception raised by task as a result of client disconnect = %r",
                 task,
