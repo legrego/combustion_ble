@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, Optional
 
 from combustion_ble.exceptions import DFUNotImplementedError
 from combustion_ble.utilities.asyncio_utils import ensure_future
+from combustion_ble.utilities.monitor import Monitorable, RemoveListener, UpdateListener
 
 if TYPE_CHECKING:
     from combustion_ble.device_manager import DeviceManager
@@ -38,7 +39,7 @@ class Device:
     ):
         self.unique_identifier: str = unique_identifier
         self.ble_identifier: Optional[str] = ble_identifier if ble_identifier else None
-        self.rssi: int = rssi if rssi is not None else self.MIN_RSSI
+        self._rssi: Monitorable[int] = Monitorable(rssi if rssi is not None else self.MIN_RSSI)
         self.firmware_version: Optional[str] = None
         self.hardware_revision: Optional[str] = None
         self.sku: Optional[str] = None
@@ -53,6 +54,15 @@ class Device:
         self.last_update_time: datetime = datetime.now()
         self.dfu_service_controller = None
         self.device_manager: "DeviceManager" = device_manager
+
+    @property
+    def rssi(self) -> int:
+        """The current RSSI."""
+        return self._rssi.value
+
+    def add_rssi_listener(self, listener: UpdateListener[int]) -> RemoveListener:
+        """Add a listener for RSSI changes."""
+        return self._rssi.add_update_listener(listener)
 
     def _update_connection_state(self, state: str):
         self.connection_state = state

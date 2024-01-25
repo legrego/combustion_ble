@@ -32,7 +32,7 @@ class MeatNetNode(Device):
     def update_with_advertising(
         self, advertising: AdvertisingData, is_connectable: bool, rssi: int
     ):
-        self.rssi = rssi
+        self._rssi.update(rssi)
         self.is_connectable = is_connectable
 
     def update_networked_probe(self, probe: "Probe"):
