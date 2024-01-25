@@ -2,13 +2,15 @@
 import asyncio
 from typing import Callable, Optional
 
+from bleak import AdvertisementDataCallback
+
 from combustion_ble.ble_data.advertising_data import (
     AdvertisingData,
     CombustionProductType,
 )
 from combustion_ble.ble_data.hop_count import HopCount
 from combustion_ble.ble_data.probe_status import ProbeStatus
-from combustion_ble.ble_manager import BleManager, BleManagerDelegate
+from combustion_ble.ble_manager import BleManager, BleManagerDelegate, BluetoothMode
 from combustion_ble.connection_manager import ConnectionManager
 from combustion_ble.devices.device import Device
 from combustion_ble.devices.meat_net_node import MeatNetNode
@@ -98,9 +100,11 @@ class DeviceManager(BleManagerDelegate):
         BleManager.shared.delegate = self
         self.timer_task: asyncio.Task | None = asyncio.create_task(self._start_timers())
 
-    async def init_bluetooth(self):
+    async def init_bluetooth(
+        self, mode: BluetoothMode = BluetoothMode.ACTIVE
+    ) -> Optional[AdvertisementDataCallback]:
         """Initialize bluetooth operations."""
-        await BleManager.shared.init_bluetooth()
+        return await BleManager.shared.init_bluetooth(mode=mode)
 
     def add_device_listener(self, listener: DeviceListener) -> None:
         """Add a device listener to be notified when devices are added or removed."""

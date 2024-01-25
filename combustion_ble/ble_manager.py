@@ -1,6 +1,13 @@
+import enum
 from typing import Optional
 
-from bleak import BleakClient, BleakError, BleakGATTCharacteristic, BleakScanner
+from bleak import (
+    AdvertisementDataCallback,
+    BleakClient,
+    BleakError,
+    BleakGATTCharacteristic,
+    BleakScanner,
+)
 from bleak.backends.device import BLEDevice
 from bleak.backends.scanner import AdvertisementData
 
@@ -60,6 +67,16 @@ class BleManagerDelegate:
         pass
 
 
+class BluetoothMode(enum.Enum):
+    """Mode for bluetooth device discovery."""
+
+    ACTIVE = "active"
+    """Active will initialize a BleakScanner to discover devices automatically."""
+
+    PASSIVE = "passive"
+    """Passive will allow you to interface this SDK with an externally-managed BleakScanner."""
+
+
 class PendingGattReads:
     """Track pending GATT Read requests."""
 
@@ -102,20 +119,26 @@ class BleManager:
         self._pending_connections: set[str] = set()
         self.is_stopping = False
 
-    async def init_bluetooth(self, scanner: Optional[BleakScanner] = None):
+    async def init_bluetooth(
+        self, mode: BluetoothMode = BluetoothMode.ACTIVE
+    ) -> None | AdvertisementDataCallback:
+        """Initialize Bluetooth"""
+        if mode == BluetoothMode.ACTIVE:
+            await self.init_bluetooth_scanning()
+        elif mode == BluetoothMode.PASSIVE:
+            return self.detection_callback
+
+        raise TypeError("Unsupported mode: %s", mode)
+
+    async def init_bluetooth_scanning(self):
         if self.scanner:
             raise CombustionError("Bluetooth has already been initialized.")
         if self.is_stopping:
             raise CombustionError("Cannot initialize bluetooth while it is stopping.")
 
-        if scanner:
-            LOGGER.debug("Initializing bluetooth with provided BleakScanner.")
-            self.scanner = scanner
-            scanner.register_detection_callback(self.detection_callback)
-        else:
-            LOGGER.debug("Initializing bluetooth with our own BleakScanner.")
-            self.scanner = BleakScanner(detection_callback=self.detection_callback)
-            await self.scanner.start()
+        LOGGER.debug("Initializing bluetooth with our own BleakScanner.")
+        self.scanner = BleakScanner(detection_callback=self.detection_callback)
+        await self.scanner.start()
 
     async def stop_bluetooth(self):
         self.is_stopping = True
