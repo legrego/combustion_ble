@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 - Allow externally managed `BleakScanner`s to be used via new `BluetoothMode` parameter. (#20)
+- Add additional probe attribute listeners (#21)
 
 ## [v0.2.1](https://github.com/legrego/combustion_ble/releases/tag/v0.2.1) - 2024-01-22
 - Allow BleManager to be stopped and restarted (#14)

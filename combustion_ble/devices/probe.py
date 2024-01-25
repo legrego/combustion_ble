@@ -92,7 +92,7 @@ class Probe(Device):
 
         self._id = advertising.mode_id.id
         self._color = advertising.mode_id.color
-        self._current_temperatures: Optional[ProbeTemperatures] = None
+        self._current_temperatures: Monitorable[Optional[ProbeTemperatures]] = Monitorable(None)
         self._instant_read_celsius: Optional[float] = None
         self._instant_read_fahrenheit: Optional[float] = None
         self._instant_read_temperature: Optional[float] = None
@@ -170,6 +170,17 @@ class Probe(Device):
         return self._overheating.add_update_listener(listener)
 
     @property
+    def current_temperatures(self) -> ProbeTemperatures | None:
+        """Current temperature of each thermistor in the probe."""
+        return self._current_temperatures.value
+
+    def add_current_temperatures_listener(
+        self, listener: UpdateListener[ProbeTemperatures | None]
+    ) -> RemoveListener:
+        """Add a listener for temperature changes."""
+        return self._current_temperatures.add_update_listener(listener)
+
+    @property
     def prediction_info(self) -> Optional[PredictionInfo]:
         """Prediction information."""
         return self._prediction_info.value
@@ -226,7 +237,7 @@ class Probe(Device):
     ):
         # Update probe with advertising data
         if rssi:
-            self.rssi = rssi
+            self._rssi.update(rssi)
         if is_connectable is not None:
             self.is_connectable = self.is_connectable
         if ble_identifier is not None:
@@ -280,7 +291,7 @@ class Probe(Device):
     def _update_temperatures(
         self, temperatures: ProbeTemperatures, virtual_sensors: VirtualSensors
     ):
-        self._current_temperatures = temperatures
+        self._current_temperatures.update(temperatures)
         self._virtual_sensors = virtual_sensors
 
         core = virtual_sensors.virtual_core.temperature_from(temperatures)
@@ -292,7 +303,7 @@ class Probe(Device):
         self._check_overheating()
 
     def _check_overheating(self):
-        if not self._current_temperatures:
+        if not self.current_temperatures:
             return
 
         any_over_temp = False
@@ -300,23 +311,23 @@ class Probe(Device):
 
         # Check T1-T2
         for i in range(0, 2):
-            if self._current_temperatures.values[i] >= self.OVERHEATING_T1_T2_THRESHOLD:
+            if self.current_temperatures.values[i] >= self.OVERHEATING_T1_T2_THRESHOLD:
                 any_over_temp = True
                 overheating_sensor_list.append(i)
 
         # Check T3
-        if self._current_temperatures.values[2] >= self.OVERHEATING_T3_THRESHOLD:
+        if self.current_temperatures.values[2] >= self.OVERHEATING_T3_THRESHOLD:
             any_over_temp = True
             overheating_sensor_list.append(2)
 
         # Check T4
-        if self._current_temperatures.values[3] >= self.OVERHEATING_T4_THRESHOLD:
+        if self.current_temperatures.values[3] >= self.OVERHEATING_T4_THRESHOLD:
             any_over_temp = True
             overheating_sensor_list.append(3)
 
         # Check T5-T8
         for i in range(4, 8):
-            if self._current_temperatures.values[i] >= self.OVERHEATING_T5_T8_THRESHOLD:
+            if self.current_temperatures.values[i] >= self.OVERHEATING_T5_T8_THRESHOLD:
                 any_over_temp = True
                 overheating_sensor_list.append(i)
 
