@@ -1,4 +1,5 @@
 """Prediction Mode."""
+
 from enum import Enum
 
 

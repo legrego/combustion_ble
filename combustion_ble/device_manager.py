@@ -1,4 +1,5 @@
 """Device Manager."""
+
 import asyncio
 from typing import Callable, Optional
 

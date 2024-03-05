@@ -1,4 +1,5 @@
 """Prediction Status."""
+
 from combustion_ble.ble_data.prediction_mode import PredictionMode
 from combustion_ble.ble_data.prediction_state import PredictionState
 from combustion_ble.ble_data.prediction_type import PredictionType

@@ -1,4 +1,5 @@
 """This example illustrates how you can use an external BleakScanner via the passive mode."""
+
 import asyncio
 from signal import SIGINT, SIGTERM
 

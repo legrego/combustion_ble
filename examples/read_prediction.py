@@ -1,4 +1,5 @@
 """This example illustrates how you can read prediction data."""
+
 import asyncio
 from signal import SIGINT, SIGTERM
 

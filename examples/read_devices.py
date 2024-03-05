@@ -1,4 +1,5 @@
 """This example illustrates how you can enumerate all discovered devices."""
+
 import asyncio
 from signal import SIGINT, SIGTERM
 

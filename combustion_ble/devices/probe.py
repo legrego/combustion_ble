@@ -1,4 +1,5 @@
 """Predictive Probe."""
+
 import asyncio
 from datetime import datetime
 from typing import TYPE_CHECKING, Coroutine, Optional

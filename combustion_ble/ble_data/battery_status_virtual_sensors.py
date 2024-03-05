@@ -1,4 +1,5 @@
 """Representation of the battery status & virtual sensors portion of the advertisement payload."""
+
 from enum import Enum
 
 from combustion_ble.ble_data.virtual_sensors import (

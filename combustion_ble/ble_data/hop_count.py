@@ -1,4 +1,5 @@
 """Hop Count."""
+
 from enum import Enum
 
 
