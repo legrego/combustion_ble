@@ -1,4 +1,5 @@
 """Predication State."""
+
 from enum import Enum
 
 

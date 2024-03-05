@@ -1,4 +1,5 @@
 """ModeId portion of advertisement payload."""
+
 from enum import Enum, unique
 
 

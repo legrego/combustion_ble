@@ -1,4 +1,5 @@
 """This example illustrates how you can use the device listener interfaces to respond to changes."""
+
 import asyncio
 from signal import SIGINT, SIGTERM
 

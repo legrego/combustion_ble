@@ -1,4 +1,5 @@
 """Prediction Info."""
+
 from typing import Optional
 
 from combustion_ble.ble_data.prediction_mode import PredictionMode

@@ -1,4 +1,5 @@
 """This example illustrates how you can read temperature logs."""
+
 import asyncio
 from datetime import datetime, timedelta
 from signal import SIGINT, SIGTERM
@@ -47,9 +48,11 @@ async def main():
             probe = probes[0]
             probe._update_log_percent()
             table = Table(
-                caption="Percent synced: " + str(probe._percent_of_logs_synced)
-                if probe._percent_of_logs_synced
-                else "0"
+                caption=(
+                    "Percent synced: " + str(probe._percent_of_logs_synced)
+                    if probe._percent_of_logs_synced
+                    else "0"
+                )
             )
             table.add_column("Timestamp")
             table.add_column("Temperature")
