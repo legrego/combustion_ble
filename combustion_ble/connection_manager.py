@@ -44,6 +44,12 @@ class ConnectionManager:
                 self.connect_probe_after_delay(probe)
             )
 
+    def clear_handlers_for_probe(self, probe: "Probe", msg: str = "None"):
+        """Clear all handlers for the given probe."""
+        if probe.serial_number_string in self.connection_timers:
+            self.connection_timers[probe.serial_number_string].cancel(msg)
+            del self.connection_timers[probe.serial_number_string]
+
     async def connect_probe_after_delay(self, probe: "Probe"):
         await asyncio.sleep(3)
         updated_probe = self.get_probe_with_serial(probe.serial_number_string)

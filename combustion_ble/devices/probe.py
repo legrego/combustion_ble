@@ -3,10 +3,7 @@ import asyncio
 from datetime import datetime
 from typing import TYPE_CHECKING, Coroutine, Optional
 
-from combustion_ble.ble_data.advertising_data import (
-    AdvertisingData,
-    CombustionProductType,
-)
+from combustion_ble.ble_data import AdvertisingData, CombustionProductType
 from combustion_ble.ble_data.battery_status_virtual_sensors import BatteryStatus
 from combustion_ble.ble_data.hop_count import HopCount
 from combustion_ble.ble_data.mode_id import ProbeColor, ProbeID, ProbeMode
@@ -32,6 +29,8 @@ DEADBAND_RANGE_IN_CELSIUS = 0.05
 
 
 class VirtualTemperatures:
+    """Virtual temperature values for this Probe."""
+
     def __init__(
         self,
         core_temperature=DEADBAND_RANGE_IN_CELSIUS,
@@ -39,14 +38,24 @@ class VirtualTemperatures:
         ambient_temperature=DEADBAND_RANGE_IN_CELSIUS,
     ):
         self.core_temperature = core_temperature
+        """The Core temperature, in Celsius"""
+
         self.surface_temperature = surface_temperature
+        """The Surface temperature, in Celsius"""
+
         self.ambient_temperature = ambient_temperature
+        """The Ambient temperature, in Celsius"""
 
 
 class Overheating:
+    """Information regarding sensor overheating."""
+
     def __init__(self, is_overheating: bool, overheating_sensors: list[int]) -> None:
-        self.is_overheating = is_overheating
-        self.overheating_sensors = overheating_sensors
+        self.is_overheating: bool = is_overheating
+        """Denotes if this sensor is overheating."""
+
+        self.overheating_sensors: list[int] = overheating_sensors
+        """The list of overheating sensors."""
 
 
 class Probe(Device):
@@ -126,7 +135,11 @@ class Probe(Device):
         self.update_with_advertising(advertising, is_connectable, rssi, identifier)
 
         # Start timer to re-request session information every 3 minutes
-        self._start_session_request_timer()
+        self.start_session_request_timer()
+
+    def as_dict(self) -> dict:
+        """Dictionary representation of this device. Required for the orjson encoder to properly encode this class."""
+        return {"serial_number_string": self.serial_number_string}
 
     @property
     def serial_number(self) -> int:
@@ -196,11 +209,11 @@ class Probe(Device):
             await asyncio.sleep(180)  # Wait for 180 seconds
             await self._request_session_information()
 
-    def _start_session_request_timer(self):
+    def start_session_request_timer(self):
         if self._session_request_task is None or self._session_request_task.done():
             self._session_request_task = asyncio.create_task(self._session_request_timer())
 
-    def _stop_session_request_timer(self):
+    def stop_session_request_timer(self):
         if self._session_request_task and not self._session_request_task.done():
             self._session_request_task.cancel()
 
