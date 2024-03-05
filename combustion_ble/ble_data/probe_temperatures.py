@@ -6,7 +6,8 @@ class ProbeTemperatures:
 
     def __init__(self, values: list[float]):
         """Initialize."""
-        self.values = values
+        self.values: list[float] = values
+        """Temerature readings for each of the Probe's 8 thermistors."""
 
     @staticmethod
     def from_reversed(bytes_: list[int]) -> "ProbeTemperatures":

@@ -121,9 +121,15 @@ class DeviceManager(BleManagerDelegate):
             self.timer_task = None
 
         # Attempt to disconnect from all devices.
-        for device in self.devices:
+        for key in self.devices:
             try:
-                await self.devices[device].disconnect()
+                device = self.devices[key]
+                await device.disconnect()
+                if isinstance(device, Probe):
+                    device.stop_session_request_timer()
+                    self.connection_manager.clear_handlers_for_probe(
+                        device, msg="device_manager::async_stop"
+                    )
             except Exception:
                 LOGGER.exception(
                     "Error disconnecting client [%s] during DeviceManager shutdown.", device
