@@ -3,8 +3,6 @@ import asyncio
 from datetime import datetime
 from typing import TYPE_CHECKING, Coroutine, Optional
 
-from attr import dataclass
-
 from combustion_ble.ble_data import AdvertisingData, CombustionProductType
 from combustion_ble.ble_data.battery_status_virtual_sensors import BatteryStatus
 from combustion_ble.ble_data.hop_count import HopCount
@@ -30,7 +28,6 @@ if TYPE_CHECKING:
 DEADBAND_RANGE_IN_CELSIUS = 0.05
 
 
-@dataclass
 class VirtualTemperatures:
     """Virtual temperature values for this Probe."""
 
@@ -50,7 +47,6 @@ class VirtualTemperatures:
         """The Ambient temperature, in Celsius"""
 
 
-@dataclass
 class Overheating:
     """Information regarding sensor overheating."""
 
