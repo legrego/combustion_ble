@@ -5,6 +5,8 @@ from combustion_ble.ble_data.prediction_type import PredictionType
 
 
 class PredictionStatus:
+    """Prediction Status."""
+
     def __init__(
         self,
         prediction_state: PredictionState,
@@ -15,13 +17,24 @@ class PredictionStatus:
         prediction_value_seconds: float,
         estimated_core_temperature: float,
     ):
-        self.prediction_state = prediction_state
-        self.prediction_mode = prediction_mode
-        self.prediction_type = prediction_type
-        self.prediction_set_point_temperature = prediction_set_point_temperature
-        self.heat_start_temperature = heat_start_temperature
-        self.prediction_value_seconds = prediction_value_seconds
-        self.estimated_core_temperature = estimated_core_temperature
+        self.prediction_state: PredictionState = prediction_state
+        """Prediction state"""
+
+        self.prediction_mode: PredictionMode = prediction_mode
+        """Prediction mode"""
+
+        self.prediction_type: PredictionType = prediction_type
+        """Prediction type"""
+
+        self.prediction_set_point_temperature: float = prediction_set_point_temperature
+        """Prediction set point temperature"""
+
+        self.heat_start_temperature: float = heat_start_temperature
+        self.prediction_value_seconds: float = prediction_value_seconds
+        """Predicted seconds remaining."""
+
+        self.estimated_core_temperature: float = estimated_core_temperature
+        """Estimated core temperature."""
 
     def to_dict(self):
         return {

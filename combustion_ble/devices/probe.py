@@ -3,7 +3,9 @@ import asyncio
 from datetime import datetime
 from typing import TYPE_CHECKING, Coroutine, Optional
 
-from combustion_ble.ble_data.advertising_data import (
+from attr import dataclass
+
+from combustion_ble.ble_data import (
     AdvertisingData,
     CombustionProductType,
 )
@@ -31,7 +33,10 @@ if TYPE_CHECKING:
 DEADBAND_RANGE_IN_CELSIUS = 0.05
 
 
+@dataclass
 class VirtualTemperatures:
+    """Virtual temperature values for this Probe."""
+
     def __init__(
         self,
         core_temperature=DEADBAND_RANGE_IN_CELSIUS,
@@ -39,14 +44,25 @@ class VirtualTemperatures:
         ambient_temperature=DEADBAND_RANGE_IN_CELSIUS,
     ):
         self.core_temperature = core_temperature
+        """The Core temperature, in Celsius"""
+
         self.surface_temperature = surface_temperature
+        """The Surface temperature, in Celsius"""
+
         self.ambient_temperature = ambient_temperature
+        """The Ambient temperature, in Celsius"""
 
 
+@dataclass
 class Overheating:
+    """Information regarding sensor overheating."""
+
     def __init__(self, is_overheating: bool, overheating_sensors: list[int]) -> None:
-        self.is_overheating = is_overheating
-        self.overheating_sensors = overheating_sensors
+        self.is_overheating: bool = is_overheating
+        """Denotes if this sensor is overheating."""
+
+        self.overheating_sensors: list[int] = overheating_sensors
+        """The list of overheating sensors."""
 
 
 class Probe(Device):
@@ -102,9 +118,7 @@ class Probe(Device):
         self._battery_status = Monitorable(BatteryStatus.OK)
         self._virtual_sensors: Optional[VirtualSensors] = None
         self._prediction_info: Monitorable[Optional[PredictionInfo]] = Monitorable(None)
-        self._virtual_temperatures: Monitorable[VirtualTemperatures] = Monitorable(
-            VirtualTemperatures()
-        )
+        self._virtual_temperatures: Monitorable[VirtualTemperatures] = Monitorable(VirtualTemperatures())
         self._temperature_logs: list[ProbeTemperatureLog] = []
         self._overheating: Monitorable[Overheating] = Monitorable(
             Overheating(is_overheating=False, overheating_sensors=[])
@@ -126,7 +140,11 @@ class Probe(Device):
         self.update_with_advertising(advertising, is_connectable, rssi, identifier)
 
         # Start timer to re-request session information every 3 minutes
-        self._start_session_request_timer()
+        self.start_session_request_timer()
+
+    def as_dict(self) -> dict:
+        """Dictionary representation of this device. Required for the orjson encoder to properly encode this class."""
+        return {"serial_number_string": self.serial_number_string}
 
     @property
     def serial_number(self) -> int:
@@ -143,9 +161,7 @@ class Probe(Device):
         """The current battery status."""
         return self._battery_status.value
 
-    def add_battery_status_listener(
-        self, listener: UpdateListener[BatteryStatus]
-    ) -> RemoveListener:
+    def add_battery_status_listener(self, listener: UpdateListener[BatteryStatus]) -> RemoveListener:
         """Add a listener for battery status changes."""
         return self._battery_status.add_update_listener(listener)
 
@@ -154,9 +170,7 @@ class Probe(Device):
         """The current virtual temperatures."""
         return self._battery_status.value
 
-    def add_virtual_temperatures_listener(
-        self, listener: UpdateListener[VirtualTemperatures]
-    ) -> RemoveListener:
+    def add_virtual_temperatures_listener(self, listener: UpdateListener[VirtualTemperatures]) -> RemoveListener:
         """Add a listener for virtual temperatures changes."""
         return self._virtual_temperatures.add_update_listener(listener)
 
@@ -185,9 +199,7 @@ class Probe(Device):
         """Prediction information."""
         return self._prediction_info.value
 
-    def add_prediction_info_listener(
-        self, listener: UpdateListener[Optional[PredictionInfo]]
-    ) -> RemoveListener:
+    def add_prediction_info_listener(self, listener: UpdateListener[Optional[PredictionInfo]]) -> RemoveListener:
         """Add a listener for prediction info changes."""
         return self._prediction_info.add_update_listener(listener)
 
@@ -196,11 +208,11 @@ class Probe(Device):
             await asyncio.sleep(180)  # Wait for 180 seconds
             await self._request_session_information()
 
-    def _start_session_request_timer(self):
+    def start_session_request_timer(self):
         if self._session_request_task is None or self._session_request_task.done():
             self._session_request_task = asyncio.create_task(self._session_request_timer())
 
-    def _stop_session_request_timer(self):
+    def stop_session_request_timer(self):
         if self._session_request_task and not self._session_request_task.done():
             self._session_request_task.cancel()
 
@@ -217,9 +229,7 @@ class Probe(Device):
         and updates whether status notifications are stale.
         """
         if self._last_instant_read:
-            time_since_last_instant_read = (
-                datetime.now() - self._last_instant_read
-            ).total_seconds()
+            time_since_last_instant_read = (datetime.now() - self._last_instant_read).total_seconds()
             if time_since_last_instant_read > self.INSTANT_READ_STALE_TIMEOUT:
                 self._instant_read_celsius = None
                 self._instant_read_fahrenheit = None
@@ -288,9 +298,7 @@ class Probe(Device):
         self._color = probe_color
         self._battery_status.update(probe_battery_status)
 
-    def _update_temperatures(
-        self, temperatures: ProbeTemperatures, virtual_sensors: VirtualSensors
-    ):
+    def _update_temperatures(self, temperatures: ProbeTemperatures, virtual_sensors: VirtualSensors):
         self._current_temperatures.update(temperatures)
         self._virtual_sensors = virtual_sensors
 
@@ -341,9 +349,7 @@ class Probe(Device):
             Overheating(is_overheating=any_over_temp, overheating_sensors=overheating_sensor_list)
         )
 
-    def _update_probe_status(
-        self, device_status: ProbeStatus, hop_count: Optional[HopCount] = None
-    ):
+    def _update_probe_status(self, device_status: ProbeStatus, hop_count: Optional[HopCount] = None):
         # Ignore status messages that have a sequence count lower than any previously received status messages
         if self._is_old_status_update(device_status):
             return
@@ -442,16 +448,12 @@ class Probe(Device):
         if max_sequence_number is None or min_sequence_number is None or current_log is None:
             return
 
-        number_logs_from_probe = current_log.logs_in_range(
-            [min_sequence_number, max_sequence_number]
-        )
+        number_logs_from_probe = current_log.logs_in_range([min_sequence_number, max_sequence_number])
         number_logs_on_probe = int(max_sequence_number - min_sequence_number + 1)
         if number_logs_from_probe == number_logs_on_probe:
             self._percent_of_logs_synced = 100
         else:
-            self._percent_of_logs_synced = int(
-                float(number_logs_from_probe) / float(number_logs_on_probe) * 100
-            )
+            self._percent_of_logs_synced = int(float(number_logs_from_probe) / float(number_logs_on_probe) * 100)
 
     def _is_old_status_update(self, device_status: ProbeStatus) -> bool:
         current_temp_log = self._get_current_temperature_log()
@@ -494,12 +496,8 @@ class Probe(Device):
         """Updates the status of whether the status notifications are stale.
         This is based on the time elapsed since the last status notification.
         """
-        time_since_last_notification = (
-            datetime.now() - self._last_status_notification_time
-        ).total_seconds()
-        self._status_notifications_stale = (
-            time_since_last_notification > self.STATUS_NOTIFICATION_STALE_TIMEOUT
-        )
+        time_since_last_notification = (datetime.now() - self._last_status_notification_time).total_seconds()
+        self._status_notifications_stale = time_since_last_notification > self.STATUS_NOTIFICATION_STALE_TIMEOUT
 
     async def _request_missing_data(self) -> None:
         tasks: list[Coroutine] = []
