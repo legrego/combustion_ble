@@ -41,8 +41,8 @@ class ProbeStatus:
         prediction_status_bytes = data[23:30]
         prediction_status = PredictionStatus.from_bytes(prediction_status_bytes)
 
-        if len(data) >= 44:
-            food_safe_data = FoodSafeData.from_raw(data[30:40])
+        # if len(data) >= 44:
+        #    food_safe_data = FoodSafeData.from_raw(data[30:40])
 
         return cls(
             min_sequence_number,
@@ -51,5 +51,5 @@ class ProbeStatus:
             mode_id,
             battery_status_virtual_sensors,
             prediction_status,
-            food_safe_data,
+            food_safe_data=None,
         )

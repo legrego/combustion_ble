@@ -119,12 +119,11 @@ class BleManager:
         self._pending_connections: set[str] = set()
         self.is_stopping = False
 
-    async def init_bluetooth(
-        self, mode: BluetoothMode = BluetoothMode.ACTIVE
-    ) -> None | AdvertisementDataCallback:
+    async def init_bluetooth(self, mode: BluetoothMode = BluetoothMode.ACTIVE) -> None | AdvertisementDataCallback:
         """Initialize Bluetooth"""
         if mode == BluetoothMode.ACTIVE:
             await self.init_bluetooth_scanning()
+            return
         elif mode == BluetoothMode.PASSIVE:
             return self.detection_callback
 
@@ -188,9 +187,7 @@ class BleManager:
             client = self.clients[identifier]
         else:
             LOGGER.debug("Connecting to [%s] via new client", identifier)
-            client = BleakClient(
-                identifier, disconnected_callback=self.disconnected_callback(identifier)
-            )
+            client = BleakClient(identifier, disconnected_callback=self.disconnected_callback(identifier))
 
         successful = False
         self._pending_connections.add(identifier)
@@ -261,9 +258,7 @@ class BleManager:
             uart_char = self.fw_revision_characteristics.get(identifier)
             client = self.clients.get(identifier)
             if self._pending_gatt_reads.has(identifier, uart_char):
-                LOGGER.debug(
-                    "Discarding concurent request to read_firmware_revision for [%s]", identifier
-                )
+                LOGGER.debug("Discarding concurent request to read_firmware_revision for [%s]", identifier)
                 return
             try:
                 if client and client.is_connected and uart_char and self.delegate:
@@ -282,9 +277,7 @@ class BleManager:
             uart_char = self.hw_revision_characteristics.get(identifier)
             client = self.clients.get(identifier)
             if self._pending_gatt_reads.has(identifier, uart_char):
-                LOGGER.debug(
-                    "Discarding concurent request to read_hardware_revision for [%s]", identifier
-                )
+                LOGGER.debug("Discarding concurent request to read_hardware_revision for [%s]", identifier)
                 return
             try:
                 if client and client.is_connected and uart_char and self.delegate:
@@ -303,9 +296,7 @@ class BleManager:
             uart_char = self.serial_number_characteristics.get(identifier)
             client = self.clients.get(identifier)
             if self._pending_gatt_reads.has(identifier, uart_char):
-                LOGGER.debug(
-                    "Discarding concurent request to read_serial_number for [%s]", identifier
-                )
+                LOGGER.debug("Discarding concurent request to read_serial_number for [%s]", identifier)
                 return
             try:
                 if client and client.is_connected and uart_char and self.delegate:
@@ -324,9 +315,7 @@ class BleManager:
             uart_char = self.model_number_characteristics.get(identifier)
             client = self.clients.get(identifier)
             if self._pending_gatt_reads.has(identifier, uart_char):
-                LOGGER.debug(
-                    "Discarding concurent request to read_model_number for [%s]", identifier
-                )
+                LOGGER.debug("Discarding concurent request to read_model_number for [%s]", identifier)
                 return
             try:
                 if client and client.is_connected and uart_char and self.delegate:
