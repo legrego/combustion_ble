@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
+- Disable Food Safe features
 
 ## [v0.3.2](https://github.com/legrego/combustion_ble/releases/tag/v0.3.2) - 2024-03-08
 - Bump `black`, reformat (#24)

@@ -125,6 +125,7 @@ class BleManager:
         """Initialize Bluetooth"""
         if mode == BluetoothMode.ACTIVE:
             await self.init_bluetooth_scanning()
+            return None
         elif mode == BluetoothMode.PASSIVE:
             return self.detection_callback
 
