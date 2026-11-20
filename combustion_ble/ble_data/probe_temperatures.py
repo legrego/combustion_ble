@@ -30,7 +30,7 @@ class ProbeTemperatures:
         )
         raw_temps.insert(0, (bytes_[11] & 0x1F) << 8 | (bytes_[12] & 0xFF) >> 0)
 
-        temperatures = [float(temp) * 0.05 - 20.0 for temp in raw_temps]
+        temperatures = [round(float(temp) * 0.05 - 20.0, 2) for temp in raw_temps]
         return ProbeTemperatures(values=temperatures)
 
     @staticmethod

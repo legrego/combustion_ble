@@ -19,7 +19,6 @@ authors = [
 description = "SDK for communicating with Combustion Bluetooth devices"
 requires-python = ">=3.11"
 dependencies = [
-  "bitstring",
   "bleak"
 ]
 license = {file = "LICENSE"}
@@ -98,7 +97,7 @@ reportPrivateImportUsage = false
 
 [tool.ruff]
 line-length = 115
-target-version = "py39"
+target-version = "py311"
 
 [tool.ruff.per-file-ignores]
 "__init__.py" = ["F401"]

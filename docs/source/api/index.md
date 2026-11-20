@@ -1,5 +1,48 @@
-Device Manager
+MeatNet
+-------
+```{eval-rst}
+.. autoclass:: combustion_ble.MeatNet
+    :members:
+
+.. autoclass:: combustion_ble.Probe
+    :members:
+
+.. autoclass:: combustion_ble.Gauge
+    :members:
+
+.. autoclass:: combustion_ble.Node
+    :members:
+
+.. autoclass:: combustion_ble.Device
+    :members:
+
+.. autoclass:: combustion_ble.ProbeRoute
+    :members:
+```
+
+Advertisements
 --------------
+```{eval-rst}
+.. autofunction:: combustion_ble.parse_advertisement
+
+.. autoclass:: combustion_ble.ProbeAdvertisement
+    :members:
+
+.. autoclass:: combustion_ble.GaugeAdvertisement
+    :members:
+
+.. autoclass:: combustion_ble.NodeAdvertisement
+    :members:
+
+.. autoclass:: combustion_ble.AlarmStatus
+    :members:
+
+.. autoclass:: combustion_ble.ThermometerPreferences
+    :members:
+```
+
+Legacy Device Manager
+---------------------
 ```{eval-rst}
 .. autoclass:: combustion_ble.DeviceManager
     :members:
