@@ -59,7 +59,7 @@ async def main():
             points = generate_data_points(probe)
             for point in points:
                 # Only show the first temp reading for now...
-                (date, temp) = point[0]
+                date, temp = point[0]
                 table.add_row(str(date), str(temp))
 
         return table

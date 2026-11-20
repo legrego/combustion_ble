@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools", "wheel"]
+requires = ["setuptools>=84.2.1", "wheel>=0.48.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -10,18 +10,19 @@ readme = "README.md"
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3.14",
     "Operating System :: OS Independent",
 ]
 authors = [
     {name = "Larry Gregory", email = "lgregorydev@gmail.com"}
 ]
 description = "SDK for communicating with Combustion Bluetooth devices"
-requires-python = ">=3.11"
+requires-python = ">=3.14.2"
 dependencies = [
-  "bleak"
+  "bleak>=3.1.0,<4"
 ]
-license = {file = "LICENSE"}
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 
 [project.urls]
 Homepage = "https://github.com/legrego/combustion_ble"
@@ -31,25 +32,23 @@ Documentation = "https://combustion_ble.readthedocs.io/"
 
 [project.optional-dependencies]
 dev = [
-    "ruff",
-    "mypy>=1.0,<1.9",
-    "black>=23.0,<25.0",
-    "isort>=5.12,<5.14",
-    "pytest",
-    "pytest-sphinx",
-    "pytest-cov",
-    "twine>=1.11.0",
-    "build",
-    "setuptools",
-    "wheel",
-    "Sphinx>=4.3.0,<7.3.0",
-    "furo==2024.1.29",
-    "myst-parser>=1.0,<2.1",
+    "ruff==0.17.6",
+    "mypy==2.4.1",
+    "black==26.10.1",
+    "isort==9.0.2",
+    "pytest==9.2.0",
+    "pytest-sphinx==0.7.1",
+    "pytest-cov==7.1.0",
+    "twine==7.0.0",
+    "build==1.6.1",
+    "Sphinx==9.2.0",
+    "furo==2025.12.19",
+    "myst-parser==5.2.0",
     "sphinx-copybutton==0.5.2",
-    "sphinx-autobuild==2024.2.4",
-    "sphinx-autodoc-typehints==2.0.0",
-    "packaging",
-    "live"
+    "sphinx-autobuild==2025.8.25",
+    "sphinx-autodoc-typehints==3.17.6",
+    "packaging==26.3",
+    "rich==15.0.0",
 ]
 
 [tool.setuptools.packages.find]
@@ -97,9 +96,13 @@ reportPrivateImportUsage = false
 
 [tool.ruff]
 line-length = 115
-target-version = "py311"
+target-version = "py314"
 
-[tool.ruff.per-file-ignores]
+[tool.ruff.lint]
+# Keep the existing lint policy explicit as Ruff defaults evolve.
+select = ["E4", "E7", "E9", "F"]
+
+[tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
 
 [tool.mypy]
