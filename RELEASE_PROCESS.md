@@ -11,7 +11,9 @@ not upload to PyPI or create GitHub releases.
 3. Run `./scripts/release.sh` to prepare the changelog, commit, and push a version
    tag. This triggers validation only. Wait for all Main checks to pass.
 4. Download the `package` artifact from that successful tagged Main run and
-   extract it. Verify its version and contents before publishing.
+   extract it into an empty `dist/` directory. Verify its version, Python
+   requirement, and contents, then run `twine check --strict dist/*` on the
+   downloaded files before publishing.
 5. When ready, manually upload those distributions using `twine upload dist/*`
    with your PyPI credentials, and create the GitHub release for the same tag,
    using the changelog for release notes and attaching the distributions.

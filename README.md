@@ -2,6 +2,8 @@
 
 A Python library for [Combustion Inc.](https://combustion.inc) Bluetooth devices: Predictive Thermometers, Giant Grill Gauges, and MeatNet repeaters (Display, Booster, Engine).
 
+Requires **Python 3.14.2 or newer**, matching the Python requirement of Home Assistant 2026.11.2. Support for Python 3.11–3.13 has been dropped in the upcoming release.
+
 The library is built around `MeatNet`, which turns Bluetooth advertisements into device state. It performs no Bluetooth I/O itself. You own the scanner and feed it advertisements. That makes it safe to use inside hosts that manage Bluetooth themselves, like [Home Assistant](https://www.home-assistant.io/).
 
 From advertisements alone you get, for every probe in range or relayed by a MeatNet node:
