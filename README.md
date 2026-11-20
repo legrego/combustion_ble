@@ -15,7 +15,9 @@ From advertisements alone you get, for every probe in range or relayed by a Meat
 
 Giant Grill Gauges report their temperature, alarms, and battery status. Displays, Boosters, and Engines report their product type and serial number.
 
-Prediction and cook data need a Bluetooth connection, which is not part of the passive core yet.
+Cooking predictions and target-temperature controls are available through an optional
+`ProbeSession`, using an already-connected Bluetooth client supplied by your application.
+The passive core still performs no Bluetooth I/O.
 
 ## Usage
 
@@ -72,9 +74,136 @@ entry.async_on_unload(
 
 See [`examples/passive_meatnet.py`](examples/passive_meatnet.py) for a live table of every device in range, using a bleak scanner.
 
+### Cooking predictions with a host-managed connection
+
+First discover the probe through advertisements, then pass a connected `bleak.BleakClient`
+for that **direct probe** to `ProbeSession`. The session subscribes to status notifications
+and command responses. It never scans, connects, reconnects, or disconnects the client.
+MeatNet repeater connections are not supported by this API yet.
+
+```python
+from combustion_ble import ProbeSession
+
+session = ProbeSession(meatnet, serial_number, connected_client)
+try:
+    await session.start()
+    await session.set_removal_temperature(63.0)  # Celsius; waits for the probe's acknowledgement.
+    # Your application keeps the session alive while monitoring the cook.
+    # Probe listeners fire when prediction values change:
+    # meatnet.probes[serial_number].prediction
+    # To disable predictions on the probe: await session.cancel_prediction()
+finally:
+    await session.stop()
+    # The application releases/disconnects connected_client itself.
+```
+
+`probe.prediction` is an immutable `CookingPrediction` containing `state`, `mode`, `type`,
+`set_point_temperature`, `estimated_core_temperature`, `seconds_remaining`, and
+`percent_through_cook`. A remaining time of `None` means the probe is not providing a usable
+estimate. Progress measures temperature change from heat start to the target, not elapsed time.
+Status notifications remain authoritative; a successful command does not invent a prediction.
+
+Continue calling `meatnet.expire()` about once per second to advance the countdown and clear
+predictions after 15 seconds without connected status. Temperature advertisements do not extend
+prediction freshness. A countdown reaching zero does not change the probe's reported cook state.
+`prediction_updated_at` records the latest status receipt using MeatNet's monotonic clock.
+
+The host's Bleak disconnect callback must call `session.disconnected()` immediately, then arrange
+for `await session.stop()` during cleanup. Stop before releasing the client; use `try/finally` so
+the host still disconnects it if subscription cleanup fails. Put separate timeouts around setup,
+cleanup, and disconnect operations. Cancelling `start()` closes the session immediately and
+leaves notification cleanup to the host's `finally` block. If `stop()` fails or times out,
+disconnect the client and call `stop()` again to release session ownership without Bluetooth I/O.
+Stopping clears local predictions
+but does not cancel the cook. Sessions are single-use, with one session allowed per probe.
+The session exclusively owns these two notification subscriptions; do not share them with another
+consumer on the same client.
+
+Commands are serialized. Device rejection raises `PredictionCommandRejectedError` and leaves
+the session usable. Timeout, cancellation during a command, and write failure close the session:
+the probe protocol has no request IDs, so late replies cannot safely be matched to new commands.
+After such an error, stop the session, disconnect the client, and establish a fresh connection
+and session before retrying. The command might already have reached the probe.
+
+#### Home Assistant connection setup
+
+Home Assistant owns discovery, adapter/proxy selection, and reconnect scheduling. In your
+integration, resolve the direct probe's address through HA and establish a fresh client with
+`bleak-retry-connector`. Keep that dependency in the integration; this library does not require
+Home Assistant or a connection helper.
+
+```python
+import asyncio
+
+from bleak_retry_connector import BleakClientWithServiceCache, establish_connection
+from homeassistant.components import bluetooth
+
+from combustion_ble import ProbeSession
+
+
+async def monitor_predictions(hass, meatnet, serial_number, stop_event):
+    """Monitor until the integration requests shutdown or the client disconnects."""
+    probe = meatnet.probes[serial_number]
+    if probe.address is None:
+        raise ConnectionError("Probe has only been heard through a MeatNet repeater")
+    device = bluetooth.async_ble_device_from_address(hass, probe.address, connectable=True)
+    if device is None:
+        raise ConnectionError("No connection-capable adapter can reach the probe")
+
+    session = None
+    disconnected = asyncio.Event()
+
+    def on_disconnect(_client):
+        if session is not None:
+            session.disconnected()
+        disconnected.set()
+
+    client = await establish_connection(
+        BleakClientWithServiceCache,
+        device,
+        probe.serial_number_string,
+        disconnected_callback=on_disconnect,
+        timeout=20.0,
+    )
+    waiters = []
+    try:
+        session = ProbeSession(meatnet, serial_number, client)
+        async with asyncio.timeout(30):
+            await session.start()
+        waiters = [
+            asyncio.create_task(stop_event.wait()),
+            asyncio.create_task(disconnected.wait()),
+        ]
+        await asyncio.wait(waiters, return_when=asyncio.FIRST_COMPLETED)
+    finally:
+        for waiter in waiters:
+            waiter.cancel()
+        await asyncio.gather(*waiters, return_exceptions=True)
+        try:
+            if session is not None:
+                async with asyncio.timeout(10):
+                    await session.stop()
+        finally:
+            try:
+                async with asyncio.timeout(10):
+                    await client.disconnect()
+            finally:
+                if session is not None and not client.is_connected:
+                    await session.stop()
+```
+
+The integration should stop/cancel this monitoring task on config-entry unload. On reconnect,
+call this function again to resolve the device through HA's current adapter/proxy selection.
+Keep the passive advertisement callback registered with `connectable=False` so temperatures
+remain available from listening-only adapters. Prediction connections require a connection-capable
+adapter or proxy and occupy a connection slot while subscribed.
+
+See [HA's Bluetooth guidance](https://contributors.home-assistant.io/core/integrations/bluetooth/)
+and [Combustion's probe protocol](https://github.com/combustion-inc/combustion-documentation/blob/main/probe_ble_specification.rst).
+
 ### Legacy `DeviceManager`
 
-The original `DeviceManager` API is still available. It runs its own scanner and maintains its own connections, so it is not suitable for Home Assistant. It will be replaced by an optional connection layer built on `MeatNet`.
+The original `DeviceManager` API is still available. It runs its own scanner and maintains its own connections, so it is not suitable for Home Assistant. Use `MeatNet` and the optional host-managed `ProbeSession` for new integrations.
 
 ## Documentation
 

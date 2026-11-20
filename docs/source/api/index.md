@@ -41,6 +41,18 @@ Advertisements
     :members:
 ```
 
+Host-managed predictions
+------------------------
+```{eval-rst}
+.. autoclass:: combustion_ble.ProbeSession
+    :members:
+
+.. autoclass:: combustion_ble.CookingPrediction
+    :members:
+
+.. autoexception:: combustion_ble.PredictionCommandRejectedError
+```
+
 Legacy Device Manager
 ---------------------
 ```{eval-rst}
