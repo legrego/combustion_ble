@@ -5,7 +5,7 @@ set -e
 rm -rf ./build/
 
 echo "Running ruff..."
-ruff ./combustion_ble
+ruff check ./combustion_ble
 
 echo "Running mypy..."
 mypy ./combustion_ble

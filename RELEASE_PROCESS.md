@@ -1,24 +1,20 @@
-# GitHub Release Process
+# Release process
 
-## Steps
+Publishing is manual. The Main GitHub Actions workflow runs checks and builds
+package artifacts for pull requests, pushes to main, and version tags. It does
+not upload to PyPI or create GitHub releases.
 
-1. Update the version in `combustion_ble/version.py`.
+1. Update `combustion_ble/version.py` and review the unreleased changelog.
+2. Run `make run-checks`, build with `python -m build`, and validate with
+   `twine check --strict dist/*` in a clean Python 3.14.2+ environment with
+   `.[dev]` installed.
+3. Run `./scripts/release.sh` to prepare the changelog, commit, and push a version
+   tag. This triggers validation only. Wait for all Main checks to pass.
+4. Download the `package` artifact from that successful tagged Main run and
+   extract it. Verify its version and contents before publishing.
+5. When ready, manually upload those distributions using `twine upload dist/*`
+   with your PyPI credentials, and create the GitHub release for the same tag,
+   using the changelog for release notes and attaching the distributions.
 
-3. Run the release script:
-
-    ```bash
-    ./scripts/release.sh
-    ```
-
-    This will commit the changes to the CHANGELOG and `version.py` files and then create a new tag in git
-    which will trigger a workflow on GitHub Actions that handles the rest.
-
-## Fixing a failed release
-
-If for some reason the GitHub Actions release workflow failed with an error that needs to be fixed, you'll have to delete both the tag and corresponding release from GitHub. After you've pushed a fix, delete the tag from your local clone with
-
-```bash
-git tag -l | xargs git tag -d && git fetch -t
-```
-
-Then repeat the steps above.
+If validation fails, fix it before publishing. Do not replace tags for versions
+that have already been published to PyPI; prepare a new version instead.

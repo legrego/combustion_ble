@@ -12,7 +12,7 @@ from combustion_ble.utilities.crc16ccitt import crc16ccitt
 
 
 def node_request_from_data(data: bytes) -> NodeRequest | None:
-    if data[:2] != b"\xCA\xFE":
+    if data[:2] != b"\xca\xfe":
         LOGGER.debug("Missing sync bytes in request")
         return None
 

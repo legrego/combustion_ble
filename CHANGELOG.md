@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
+- Require Python >= 3.14.2 to match Home Assistant, refresh dependencies and CI actions, and remove automatic PyPI publishing and GitHub releases from CI.
 - Add `MeatNet`, a passive core that builds probe, gauge, and node state from advertisements supplied by the caller. It performs no Bluetooth I/O, creates no background tasks, and has no global state, so it can run inside Home Assistant.
 - Add `parse_advertisement()`, which decodes advertisements from every current product type: probes, repeated probe data, Giant Grill Gauge, Display, Booster, and Engine.
 - Choose between direct and MeatNet-relayed probe data using the same rules as Combustion's Android SDK.
