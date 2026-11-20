@@ -83,8 +83,10 @@ class ProbeSession:
     async def start(self) -> None:
         """Subscribe to status and command responses on an already-connected client.
 
-        Prediction data arrives with the next status notification. A failed start cleans up
-        subscriptions and closes the session; the host remains responsible for the connection.
+        Prediction data arrives with the next status notification. A failed start attempts
+        subscription cleanup and closes the session. Cancellation closes it immediately without
+        awaiting cleanup, preserving the host's deadline. Always call :meth:`stop` in the host's
+        ``finally`` block, with its own deadline, and disconnect the client if cleanup stalls.
         """
         async with self._lifecycle_lock:
             if self._closed:
@@ -107,7 +109,14 @@ class ProbeSession:
                     if not self._active or not self._client.is_connected:
                         raise ConnectionError("Probe disconnected while subscribing")
                 self._ready = True
-            except BaseException:
+            except asyncio.CancelledError:
+                # An expired host timeout has already delivered its cancellation. Awaiting GATT
+                # cleanup here could stall indefinitely without another cancellation to stop it.
+                # Keep ownership until the host calls stop(), so old subscriptions cannot race
+                # with a replacement session.
+                self.disconnected()
+                raise
+            except Exception:
                 self.disconnected()
                 try:
                     await self._stop_notifications()
@@ -138,8 +147,9 @@ class ProbeSession:
     async def stop(self) -> None:
         """Fail pending work, clear predictions, and remove every subscription.
 
-        Safe to call repeatedly, including after disconnect. Always call before releasing the
-        client. If cleanup fails, the host should disconnect the client before creating a session.
+        Safe to call repeatedly, including after disconnect. The host should bound cleanup with
+        its own timeout. If cleanup fails or is cancelled, disconnect the client and call stop()
+        again to release ownership without Bluetooth I/O before creating a replacement session.
         """
         async with self._lifecycle_lock:
             self.disconnected()

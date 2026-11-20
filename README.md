@@ -110,7 +110,11 @@ prediction freshness. A countdown reaching zero does not change the probe's repo
 
 The host's Bleak disconnect callback must call `session.disconnected()` immediately, then arrange
 for `await session.stop()` during cleanup. Stop before releasing the client; use `try/finally` so
-the host still disconnects it if subscription cleanup fails. Stopping clears local predictions
+the host still disconnects it if subscription cleanup fails. Put separate timeouts around setup,
+cleanup, and disconnect operations. Cancelling `start()` closes the session immediately and
+leaves notification cleanup to the host's `finally` block. If `stop()` fails or times out,
+disconnect the client and call `stop()` again to release session ownership without Bluetooth I/O.
+Stopping clears local predictions
 but does not cancel the cook. Sessions are single-use, with one session allowed per probe.
 The session exclusively owns these two notification subscriptions; do not share them with another
 consumer on the same client.
@@ -164,7 +168,8 @@ async def monitor_predictions(hass, meatnet, serial_number, stop_event):
     waiters = []
     try:
         session = ProbeSession(meatnet, serial_number, client)
-        await session.start()
+        async with asyncio.timeout(30):
+            await session.start()
         waiters = [
             asyncio.create_task(stop_event.wait()),
             asyncio.create_task(disconnected.wait()),
@@ -176,9 +181,15 @@ async def monitor_predictions(hass, meatnet, serial_number, stop_event):
         await asyncio.gather(*waiters, return_exceptions=True)
         try:
             if session is not None:
-                await session.stop()
+                async with asyncio.timeout(10):
+                    await session.stop()
         finally:
-            await client.disconnect()
+            try:
+                async with asyncio.timeout(10):
+                    await client.disconnect()
+            finally:
+                if session is not None and not client.is_connected:
+                    await session.stop()
 ```
 
 The integration should stop/cancel this monitoring task on config-entry unload. On reconnect,

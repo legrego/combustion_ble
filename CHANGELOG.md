@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add direct-probe `ProbeSession` support using an already-connected, host-owned Bleak client, compatible with Home Assistant's Bluetooth connection management. Sessions receive cooking predictions and support acknowledged removal-target and cancel commands without scanning or managing connections.
 - Expose immutable cooking predictions on `MeatNet.Probe`, with listener updates, countdowns advanced by `expire()`, and freshness independent of temperature advertisements.
 - Correct direct set-prediction requests to use a two-byte little-endian payload, validate targets, and round them to tenths of a degree Celsius.
+- Preserve host subscription deadlines when `ProbeSession.start()` is cancelled: invalidate predictions immediately and defer notification cleanup to the host, retaining session ownership until cleanup completes.
 
 ## [v0.4.1](https://github.com/legrego/combustion_ble/releases/tag/v0.4.1) - 2026-11-20
 - Allow bleak 3.0.2, the version Home Assistant 2026.10 and 2026.11 pin. Home Assistant couldn't install 0.4.0, which required bleak 3.1.0 or newer.

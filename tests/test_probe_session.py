@@ -12,6 +12,7 @@ from combustion_ble import (
     PredictionCommandRejectedError,
     PredictionMode,
     PredictionState,
+    PredictionStatus,
     ProbeSession,
 )
 from combustion_ble.const import (
@@ -325,5 +326,91 @@ def test_malformed_status_and_disconnected_start():
         client.emit(DEVICE_STATUS_CHARACTERISTIC, status_payload() + bytes(100))
         assert meatnet.probes[SERIAL].prediction is not None
         await session.stop()
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("phase", ["first_subscription", "second_subscription", "failure_cleanup"])
+@pytest.mark.parametrize("interrupt", ["timeout", "cancel"])
+def test_start_cancellation_propagates_when_cleanup_stalls(phase, interrupt):
+    """A host deadline/cancellation must not wait for a second, stalled GATT operation."""
+
+    async def run():
+        meatnet, _, _, _ = setup_session()
+        entered = asyncio.Event()
+
+        class StallingClient(FakeClient):
+            async def start_notify(self, char_specifier, callback):
+                await super().start_notify(char_specifier, callback)
+                stalled_characteristic = (
+                    UART_TX_CHARACTERISTIC
+                    if phase == "first_subscription"
+                    else DEVICE_STATUS_CHARACTERISTIC
+                )
+                if char_specifier == stalled_characteristic:
+                    entered.set()
+                    await asyncio.Event().wait()
+
+            async def stop_notify(self, char_specifier):
+                self.stopped.append(char_specifier)
+                entered.set()
+                await asyncio.Event().wait()
+
+        client = StallingClient()
+        if phase == "failure_cleanup":
+            client.fail_start = DEVICE_STATUS_CHARACTERISTIC
+        session = ProbeSession(meatnet, SERIAL, client)
+        # Cancellation must also clear an existing prediction.
+        meatnet.handle_prediction_status(
+            SERIAL, PredictionStatus.from_bytes(status_payload()[23:30])
+        )
+
+        async def start():
+            if interrupt == "timeout":
+                async with asyncio.timeout(0.01):
+                    await session.start()
+            else:
+                await session.start()
+
+        task = asyncio.create_task(start())
+        try:
+            async with asyncio.timeout(1):
+                await entered.wait()
+            if interrupt == "cancel":
+                task.cancel()
+            # asyncio.wait doesn't itself cancel the task: wait_for would mask the regression
+            # with a second cancellation, or hang waiting for cancellation cleanup.
+            done, _ = await asyncio.wait({task}, timeout=0.2)
+            assert task in done, "Host cancellation remained blocked on unsubscribe cleanup"
+            expected = TimeoutError if interrupt == "timeout" else asyncio.CancelledError
+            with pytest.raises(expected):
+                await task
+            probe = meatnet.probes[SERIAL]
+            assert probe.prediction is None
+            if phase != "failure_cleanup":
+                assert not client.stopped  # No Bluetooth cleanup is attempted on cancellation.
+            assert probe._prediction_session is session
+            replacement = ProbeSession(meatnet, SERIAL, FakeClient())
+            with pytest.raises(RuntimeError, match="already has"):
+                await replacement.start()
+            for callback in client.callbacks.values():
+                callback(None, bytearray(status_payload()))
+            assert probe.prediction is None
+            with pytest.raises(ConnectionError):
+                await session.cancel_prediction()
+            with pytest.raises(RuntimeError, match="new session"):
+                await session.start()
+        finally:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+            # The host can disconnect even if notification cleanup stalls, then release ownership
+            # without issuing any further GATT operations.
+            client.is_connected = False
+            await session.stop()
+        assert meatnet.probes[SERIAL]._prediction_session is None
+        assert not session._subscribed
+        replacement = ProbeSession(meatnet, SERIAL, FakeClient())
+        await replacement.start()
+        await replacement.stop()
 
     asyncio.run(run())
