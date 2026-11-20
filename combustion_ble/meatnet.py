@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable, Hashable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from types import MappingProxyType
 from typing import Protocol
 
@@ -38,6 +38,7 @@ from combustion_ble.advertising import (
 from combustion_ble.ble_data.advertising_data import CombustionProductType
 from combustion_ble.ble_data.battery_status_virtual_sensors import BatteryStatus
 from combustion_ble.ble_data.mode_id import ProbeColor, ProbeID, ProbeMode
+from combustion_ble.ble_data.prediction_status import PredictionStatus
 from combustion_ble.ble_data.virtual_sensors import (
     VirtualAmbientSensor,
     VirtualCoreSensor,
@@ -45,11 +46,15 @@ from combustion_ble.ble_data.virtual_sensors import (
 )
 from combustion_ble.instant_read_filter import InstantReadFilter
 from combustion_ble.logger import LOGGER
+from combustion_ble.prediction.cooking_prediction import CookingPrediction
 
 _LOGGER = LOGGER.getChild("meatnet")
 
 DEFAULT_STALE_TIMEOUT = 15.0
 """Seconds without any advertisement before a device is marked unavailable."""
+
+PREDICTION_STALE_TIMEOUT = 15.0
+"""Seconds without connected status before a prediction is cleared."""
 
 NORMAL_MODE_IDLE_TIMEOUT = 5.0
 """Seconds before normal mode data from a worse link may replace data from the preferred link."""
@@ -147,6 +152,13 @@ class Probe(Device):
     def __init__(self, serial_number: int, now: float) -> None:
         super().__init__(now)
         self.serial_number: int = serial_number
+
+        self.prediction: CookingPrediction | None = None
+        """Latest connected prediction, or ``None`` when unknown, stale, or disconnected."""
+        self.prediction_updated_at: float | None = None
+        """Monotonic clock time of the latest connected prediction status."""
+        self._prediction_seconds: int | None = None
+        self._prediction_session: object | None = None
 
         self.mode: ProbeMode = ProbeMode.NORMAL
         """``INSTANT_READ`` while instant read readings are current, otherwise ``NORMAL``.
@@ -247,6 +259,7 @@ class Probe(Device):
         return (
             self.available,
             self.mode,
+            self.prediction,
             self.probe_id,
             self.color,
             self.battery_status,
@@ -369,6 +382,15 @@ class Probe(Device):
         self._instant_read_filter = InstantReadFilter()
 
     def _expire(self, now: float, stale_timeout: float) -> None:
+        if self.prediction is not None and self.prediction_updated_at is not None:
+            elapsed = max(0.0, now - self.prediction_updated_at)
+            if elapsed > PREDICTION_STALE_TIMEOUT:
+                self.prediction = None
+            elif self._prediction_seconds is not None:
+                self.prediction = replace(
+                    self.prediction,
+                    seconds_remaining=max(0, self._prediction_seconds - int(elapsed)),
+                )
         last_used = self._instant_read_last_used
         if (
             self.instant_read_celsius is not None
@@ -620,7 +642,7 @@ class MeatNet:
         return self._publish(tracker)
 
     def expire(self) -> list[Device]:
-        """Time out stale devices, routes, and instant read readings.
+        """Time out stale data and advance connected prediction countdowns.
 
         Call this periodically (about once per second). Returns the devices whose state changed.
         """
@@ -629,6 +651,32 @@ class MeatNet:
         for device in self.devices:
             tracker.watch(device)
             device._expire(now, self._stale_timeout)
+        return self._publish(tracker)
+
+    def handle_prediction_status(
+        self, serial_number: int, status: PredictionStatus
+    ) -> list[Device]:
+        """Apply connected prediction data to an already discovered probe.
+
+        This does not refresh advertisement availability or overwrite passive temperature data.
+        Identical statuses refresh prediction freshness without notifying listeners.
+        """
+        probe = self._probes[serial_number]
+        tracker = _ChangeTracker()
+        tracker.watch(probe)
+        probe.prediction = CookingPrediction.from_status(status)
+        probe.prediction_updated_at = self._clock()
+        probe._prediction_seconds = probe.prediction.seconds_remaining
+        return self._publish(tracker)
+
+    def clear_prediction(self, serial_number: int) -> list[Device]:
+        """Invalidate a probe's prediction when its status connection is lost."""
+        probe = self._probes[serial_number]
+        tracker = _ChangeTracker()
+        tracker.watch(probe)
+        probe.prediction = None
+        probe.prediction_updated_at = None
+        probe._prediction_seconds = None
         return self._publish(tracker)
 
     def _handle_probe_advertisement(
