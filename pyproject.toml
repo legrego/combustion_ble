@@ -19,7 +19,9 @@ authors = [
 description = "SDK for communicating with Combustion Bluetooth devices"
 requires-python = ">=3.14.2"
 dependencies = [
-  "bleak>=3.1.0,<4"
+  # Home Assistant installs integration requirements under its own pins, so this
+  # floor must not be above the bleak version Home Assistant ships.
+  "bleak>=3.0.2,<4"
 ]
 license = "Apache-2.0"
 license-files = ["LICENSE"]

@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [v0.4.1](https://github.com/legrego/combustion_ble/releases/tag/v0.4.1) - 2026-11-20
+- Allow bleak 3.0.2, the version Home Assistant 2026.10 and 2026.11 pin. Home Assistant couldn't install 0.4.0, which required bleak 3.1.0 or newer.
+
 ## [v0.4.0](https://github.com/legrego/combustion_ble/releases/tag/v0.4.0) - 2026-11-20
 - Require Python >= 3.14.2 to match Home Assistant, refresh dependencies and CI actions, and publish to PyPI and GitHub only through a manually triggered workflow.
 - Add `MeatNet`, a passive core that builds probe, gauge, and node state from advertisements supplied by the caller. It performs no Bluetooth I/O, creates no background tasks, and has no global state, so it can run inside Home Assistant.
