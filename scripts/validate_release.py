@@ -3,6 +3,7 @@
 import argparse
 import re
 import runpy
+import subprocess
 import tarfile
 import tomllib
 import zipfile
@@ -64,9 +65,28 @@ def main() -> None:
     parser.add_argument("tag")
     parser.add_argument("--dist", type=Path)
     args = parser.parse_args()
-    notes = validate_release(args.tag, Path(__file__).resolve().parent.parent, args.dist)
+    root = Path(__file__).resolve().parent.parent
+    notes = validate_release(args.tag, root, args.dist)
+    validate_tag_commit(args.tag, root)
     if args.dist is not None:
         Path("RELEASE_NOTES.md").write_text(notes)
+
+
+def validate_tag_commit(tag: str, root: Path) -> None:
+    """Allow a missing tag, but never reuse a tag pointing at another commit."""
+    ref = f"refs/tags/{tag}"
+    existing = subprocess.run(
+        ["git", "show-ref", "--verify", "--quiet", ref], cwd=root, check=False
+    )
+    if existing.returncode == 1:
+        return
+    existing.check_returncode()
+
+    def resolve(revision: str) -> str:
+        return subprocess.check_output(["git", "rev-parse", revision], cwd=root, text=True).strip()
+
+    if resolve(f"{ref}^{{commit}}") != resolve("HEAD"):
+        raise ValueError(f"Tag {tag} already exists at a different commit; refusing to move it")
 
 
 if __name__ == "__main__":

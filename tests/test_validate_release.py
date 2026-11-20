@@ -1,12 +1,17 @@
 """Release validation must reject inconsistent tags, notes, and packages."""
 
 import io
+import subprocess
 import tarfile
 import zipfile
 
 import pytest
 
-from scripts.validate_release import release_notes, validate_release
+from scripts.validate_release import (
+    release_notes,
+    validate_release,
+    validate_tag_commit,
+)
 
 
 @pytest.fixture
@@ -94,3 +99,52 @@ def test_distribution_metadata(metadata, tmp_path, release_root):
     else:
         with pytest.raises(ValueError, match="does not match source"):
             validate_release("v0.4.0", release_root, dist)
+
+
+@pytest.fixture
+def git_repo(tmp_path):
+    def git(*args):
+        return subprocess.check_output(
+            ["git", "-c", "user.name=Release Test", "-c", "user.email=test@example.com", *args],
+            cwd=tmp_path,
+            text=True,
+        ).strip()
+
+    git("init", "-q")
+    git("commit", "--allow-empty", "-m", "Initial commit")
+    return tmp_path, git
+
+
+def test_missing_tag_validation_does_not_create_tag(git_repo):
+    root, git = git_repo
+    validate_tag_commit("v0.4.0", root)
+    assert git("tag", "--list") == ""
+
+
+@pytest.mark.parametrize("annotated", [False, True])
+def test_existing_tag_at_selected_commit_is_allowed(git_repo, annotated):
+    root, git = git_repo
+    if annotated:
+        git("tag", "-a", "v0.4.0", "-m", "Release")
+    else:
+        git("tag", "v0.4.0")
+    validate_tag_commit("v0.4.0", root)
+
+
+@pytest.mark.parametrize("annotated", [False, True])
+def test_existing_tag_at_other_commit_is_rejected_and_preserved(git_repo, annotated):
+    root, git = git_repo
+    if annotated:
+        git("tag", "-a", "v0.4.0", "-m", "Release")
+    else:
+        git("tag", "v0.4.0")
+    original = git("rev-parse", "refs/tags/v0.4.0")
+    git("commit", "--allow-empty", "-m", "Later commit")
+    with pytest.raises(ValueError, match="different commit"):
+        validate_tag_commit("v0.4.0", root)
+    assert git("rev-parse", "refs/tags/v0.4.0") == original
+
+
+def test_tag_validation_does_not_hide_git_errors(tmp_path):
+    with pytest.raises(subprocess.CalledProcessError):
+        validate_tag_commit("v0.4.0", tmp_path)

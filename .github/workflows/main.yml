@@ -11,11 +11,11 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing release tag (for example v0.4.0)
+        description: Release tag to create or reuse (for example v0.4.0)
         required: true
         type: string
       publish:
-        description: Publish to PyPI and create a GitHub release (off means dry run)
+        description: Create the tag and publish to PyPI and GitHub (off means dry run)
         default: false
         type: boolean
   pull_request:
@@ -39,7 +39,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || github.ref }}
+          ref: ${{ github.sha }}
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Resolve commit and validate release tag
@@ -142,6 +143,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ needs.prepare.outputs.sha }}
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Setup Python environment
@@ -170,6 +172,18 @@ jobs:
           if [ -z "$TWINE_PASSWORD" ]; then
             echo "::error::Set the PYPI_API_KEY repository secret before publishing."
             exit 1
+          fi
+
+      - name: Create release tag at validated commit
+        if: inputs.publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"; then
+            echo "Using existing tag $RELEASE_TAG at the validated commit."
+          else
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+              -f "ref=refs/tags/$RELEASE_TAG" -f "sha=$(git rev-parse HEAD)"
           fi
 
       - name: Publish to PyPI
