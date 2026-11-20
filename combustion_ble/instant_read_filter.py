@@ -46,7 +46,7 @@ class InstantReadFilter:
         lower_bound = display_temperature - 0.5 - deadband_range
 
         if temperature > upper_bound or temperature < lower_bound:
-            return round(temperature)
+            return float(round(temperature))
 
         return float(display_temperature)
 

@@ -1,7 +1,7 @@
 Installation
 ============
 
-**combustion_ble** supports Python >= 3.8.
+**combustion_ble** supports Python >= 3.11.
 
 ## Installing with `pip`
 

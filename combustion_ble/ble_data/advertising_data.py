@@ -12,11 +12,24 @@ from combustion_ble.ble_data.probe_temperatures import ProbeTemperatures
 
 
 class CombustionProductType(Enum):
-    """Enumeration representing the types of combustion products."""
+    """Product type byte found at the start of Combustion manufacturer data.
+
+    Values that are not recognized map to ``UNKNOWN`` rather than raising, so that newer products
+    do not break parsing.
+    """
 
     UNKNOWN = 0x00
     PROBE = 0x01
     MEAT_NET_NODE = 0x02
+    """Probe data repeated by a MeatNet node (Display, Booster, Gauge, Engine, ...)."""
+    GAUGE = 0x03
+    DISPLAY = 0x04
+    BOOSTER = 0x05
+    ENGINE = 0x06
+
+    @classmethod
+    def _missing_(cls, value: object) -> "CombustionProductType":
+        return cls.UNKNOWN
 
 
 class AdvertisingData(NamedTuple):
@@ -32,9 +45,11 @@ class AdvertisingData(NamedTuple):
 
     @staticmethod
     def from_data(data: bytes) -> Optional["AdvertisingData"]:
-        """Create instance from raw advertising data."""
-        from bitstring import Bits
+        """Create instance from raw advertising data.
 
+        Only probe data (sent directly by a probe, or repeated by a MeatNet node) is supported.
+        Returns ``None`` for any other product type.
+        """
         if data is None or len(data) < 20:
             return None
 
@@ -46,6 +61,8 @@ class AdvertisingData(NamedTuple):
         # Product type
         type_byte = data[2]
         product_type = CombustionProductType(type_byte)
+        if product_type not in (CombustionProductType.PROBE, CombustionProductType.MEAT_NET_NODE):
+            return None
 
         # Serial number
         serial_number = int.from_bytes(data[3:7], byteorder="little")
@@ -71,7 +88,7 @@ class AdvertisingData(NamedTuple):
         )
 
         # Bit String
-        bit_string = Bits(data).bin
+        bit_string = "".join(f"{byte:08b}" for byte in data)
 
         return AdvertisingData(
             type=product_type,
