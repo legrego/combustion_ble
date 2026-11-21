@@ -1,6 +1,6 @@
 """Combustion Bluetooth Parsing."""
 
-from .advertising_data import AdvertisingData, CombustionProductType
+from .advertising_data import CombustionProductType
 from .battery_status_virtual_sensors import BatteryStatus
 from .mode_id import ProbeColor, ProbeID, ProbeMode
 from .prediction_status import (
@@ -12,7 +12,6 @@ from .prediction_status import (
 from .probe_temperatures import ProbeTemperatures
 
 __all__ = [
-    "AdvertisingData",
     "BatteryStatus",
     "CombustionProductType",
     "ProbeColor",
