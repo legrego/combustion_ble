@@ -15,10 +15,11 @@ From advertisements alone you get, for every probe in range or relayed by a Meat
 
 Giant Grill Gauges report their temperature, alarms, and battery status. Displays, Boosters, and Engines report their product type and serial number.
 
-Cooking predictions and target-temperature controls are available through an optional
-`ProbeSession`, using an already-connected Bluetooth client supplied by your application.
-`NodeSession` reads predictions for every probe on a MeatNet network through one connection to a
-repeater. The passive core still performs no Bluetooth I/O.
+Cooking predictions, target-temperature controls, and firmware and hardware revisions are
+available through optional sessions that use an already-connected Bluetooth client supplied by your
+application: `ProbeSession` for a direct probe connection, and `NodeSession` for every probe on a
+MeatNet network through one connection to a repeater. The passive core still performs no Bluetooth
+I/O.
 
 ## Usage
 
@@ -208,8 +209,8 @@ and [Combustion's probe protocol](https://github.com/combustion-inc/combustion-d
 A Display, Booster, Giant Grill Gauge, or Engine relays the status of every probe on its MeatNet
 network, including predictions, as UART notifications. `NodeSession` subscribes to them through
 one connection to the repeater, so a single connection slot covers every probe, including probes
-out of the host's direct range. It is read-only: target-temperature commands still need a
-`ProbeSession`.
+out of the host's direct range. The session can also set and cancel targets on any of those
+probes through the repeater.
 
 ```python
 from combustion_ble import NodeSession
@@ -218,9 +219,17 @@ session = NodeSession(meatnet, node.address, connected_client)  # node from meat
 try:
     await session.start()
     # meatnet.probes[serial_number].prediction now updates for every relayed probe.
+    await session.set_removal_temperature(serial_number, 63.0)  # Waits for the acknowledgement.
+    # To disable predictions on that probe: await session.cancel_prediction(serial_number)
 finally:
     await session.stop()
 ```
+
+Unlike a direct probe connection, requests through a repeater carry request IDs, so they can run
+concurrently, and a request that times out (30 seconds by default, set with `command_timeout`),
+fails, or is cancelled leaves the session running. Rejection raises
+`PredictionCommandRejectedError`. As with `ProbeSession`, an acknowledgement doesn't invent a
+prediction; relayed status remains authoritative.
 
 The lifecycle matches `ProbeSession`: call `session.disconnected()` from the client's disconnect
 callback, bound `start()` and `stop()` with your own timeouts, and release the client yourself.
@@ -253,6 +262,27 @@ Repeaters are ranked like Combustion's apps: ones relaying probes first, then th
 signal. Pass the addresses of repeaters whose last attempt failed as `failed` to try them last.
 Try `plan.repeaters` in order and stop at the first one a connection-capable adapter can reach.
 A probe can briefly have both connections, until the repeater relays its first status.
+
+### Firmware and hardware revisions
+
+Advertisements don't carry firmware versions, so they are read through a session and stored on the
+device: `device.firmware_version` (a `FirmwareVersion`) and `device.hardware_revision` (a string).
+Both are `None` until read, notify the device's listeners when they change, and keep their last
+value after the session closes.
+
+```python
+await probe_session.read_device_information()  # The directly connected probe.
+await node_session.read_device_information()  # The repeater itself (and its Gauge, if it is one).
+await node_session.read_probe_information(serial_number)  # A probe, through the repeater.
+
+probe = meatnet.probes[serial_number]
+str(probe.firmware_version)  # The reported string, such as "v1.4.2"; use it for HA's sw_version.
+probe.firmware_version >= FirmwareVersion.parse("v1.4.0")  # Compare parsed versions.
+```
+
+Call these after `start()` and bound them with your own timeouts. A failed read raises without
+affecting the session. Repeaters other than the one you're connected to don't report their
+revisions.
 
 See [Combustion's MeatNet node protocol](https://github.com/combustion-inc/combustion-documentation/blob/main/meatnet_node_ble_specification.rst).
 

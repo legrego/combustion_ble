@@ -44,6 +44,7 @@ from combustion_ble.ble_data.virtual_sensors import (
     VirtualCoreSensor,
     VirtualSurfaceSensor,
 )
+from combustion_ble.firmware_version import FirmwareVersion
 from combustion_ble.food_safe import FoodSafe
 from combustion_ble.instant_read_filter import InstantReadFilter
 from combustion_ble.logger import LOGGER
@@ -136,6 +137,17 @@ class Device:
         self.last_seen: float = now
         """Clock time of the most recent advertisement about this device."""
 
+        self.firmware_version: FirmwareVersion | None = None
+        """Firmware revision, once read through a connection. ``None`` until then.
+
+        Advertisements don't carry it, so it is only known for devices a session has read it from:
+        the device a session is connected to, and probes read through a connected node. The last
+        value read is kept after the connection closes.
+        """
+
+        self.hardware_revision: str | None = None
+        """Hardware revision, once read through a connection. Follows :attr:`firmware_version`."""
+
         self._listeners: list[Listener] = []
 
     def add_listener(self, listener: Listener) -> RemoveListener:
@@ -159,7 +171,9 @@ class Device:
                 _LOGGER.exception("Error in listener for %s", self)
 
     def _observable_state(self) -> tuple[Hashable, ...]:
-        return (self.available,)
+        # The raw string, because equal versions can differ in build variant.
+        firmware = None if self.firmware_version is None else self.firmware_version.raw
+        return (self.available, firmware, self.hardware_revision)
 
     def _mark_seen(self, now: float) -> None:
         self.last_seen = now
@@ -286,7 +300,7 @@ class Probe(Device):
 
     def _observable_state(self) -> tuple[Hashable, ...]:
         return (
-            self.available,
+            *super()._observable_state(),
             self.mode,
             self.prediction,
             self.food_safe,
@@ -500,7 +514,7 @@ class Gauge(Device):
 
     def _observable_state(self) -> tuple[Hashable, ...]:
         return (
-            self.available,
+            *super()._observable_state(),
             self.address,
             self.temperature,
             self.sensor_present,
@@ -565,7 +579,7 @@ class Node(Device):
 
     def _observable_state(self) -> tuple[Hashable, ...]:
         return (
-            self.available,
+            *super()._observable_state(),
             self.product_type,
             self.serial_number,
             frozenset(self.relayed_probes),
@@ -768,6 +782,41 @@ class MeatNet:
         tracker.watch(probe)
         probe._prediction_feeds.pop(_HOST_SOURCE if source is None else source, None)
         probe._update_prediction(now)
+        return self._publish(tracker)
+
+    def handle_device_information(
+        self,
+        device: Device,
+        *,
+        firmware_version: FirmwareVersion | str | None = None,
+        hardware_revision: str | None = None,
+    ) -> list[Device]:
+        """Record a device's firmware and hardware revisions, read through a connection.
+
+        Arguments left as ``None`` keep their current value. A Giant Grill Gauge appears as both
+        a :class:`Gauge` and a :class:`Node`; information for either is applied to both.
+
+        :param firmware_version: A parsed version, or the raw revision string.
+        :return: Devices whose state changed.
+        """
+        if isinstance(firmware_version, str):
+            firmware_version = FirmwareVersion.parse(firmware_version)
+        targets: list[Device] = [device]
+        if isinstance(device, Gauge):
+            node = self._nodes.get(device.address)
+            if node is not None and node.serial_number == device.serial_number:
+                targets.append(node)
+        elif isinstance(device, Node) and device.serial_number:
+            gauge = self._gauges.get(device.serial_number)
+            if gauge is not None and gauge.address == device.address:
+                targets.append(gauge)
+        tracker = _ChangeTracker()
+        for target in targets:
+            tracker.watch(target)
+            if firmware_version is not None:
+                target.firmware_version = firmware_version
+            if hardware_revision is not None:
+                target.hardware_revision = hardware_revision
         return self._publish(tracker)
 
     def _handle_probe_advertisement(

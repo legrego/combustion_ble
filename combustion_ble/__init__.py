@@ -42,11 +42,17 @@ from combustion_ble.ble_data.virtual_sensors import (
     VirtualSurfaceSensor,
 )
 from combustion_ble.connection_plan import ConnectionPlan, plan_connections
+from combustion_ble.exceptions import (
+    CombustionError,
+    PredictionCommandRejectedError,
+    RequestRejectedError,
+)
+from combustion_ble.firmware_version import FirmwareVersion
 from combustion_ble.food_safe import FoodSafe
 from combustion_ble.meatnet import Device, Gauge, MeatNet, Node, Probe, ProbeRoute
 from combustion_ble.node_session import NodeSession
 from combustion_ble.prediction.cooking_prediction import CookingPrediction
-from combustion_ble.probe_session import PredictionCommandRejectedError, ProbeSession
+from combustion_ble.probe_session import ProbeSession
 from combustion_ble.version import VERSION, VERSION_SHORT
 
 __all__ = [
@@ -56,10 +62,12 @@ __all__ = [
     "Advertisement",
     "AlarmStatus",
     "BatteryStatus",
+    "CombustionError",
     "CombustionProductType",
     "ConnectionPlan",
     "CookingPrediction",
     "Device",
+    "FirmwareVersion",
     "FoodSafe",
     "FoodSafeMode",
     "FoodSafeState",
@@ -85,6 +93,7 @@ __all__ = [
     "ProbeRoute",
     "ProbeSession",
     "ProbeTemperatures",
+    "RequestRejectedError",
     "Serving",
     "SimplifiedProduct",
     "ThermometerPreferences",
