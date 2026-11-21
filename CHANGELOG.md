@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [v0.8.0](https://github.com/legrego/combustion_ble/releases/tag/v0.8.0) - 2026-11-21
+
 - **Breaking:** remove the legacy `DeviceManager` stack, which ran its own Bluetooth scanner, kept its own connections, and created a module-level singleton. Removed: `DeviceManager`, `BluetoothMode`, `VirtualTemperatures`, the `combustion_ble.devices` package, and the `ble_manager`, `connection_manager`, `dfu_manager`, `message_handlers`, `logged_probe_data_count`, `probe_temperature_log`, `prediction.prediction_info`, `prediction.prediction_manager`, `utilities.asyncio_utils`, and `utilities.monitor` modules. Use `MeatNet` with the host-managed `ProbeSession` and `NodeSession` instead.
 - **Breaking:** remove `AdvertisingData`, the parser `DeviceManager` used. Use `parse_advertisement()`. `CombustionProductType` is unchanged.
 - Remove the examples that used `DeviceManager`.
