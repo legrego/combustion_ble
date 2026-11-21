@@ -256,10 +256,6 @@ A probe can briefly have both connections, until the repeater relays its first s
 
 See [Combustion's MeatNet node protocol](https://github.com/combustion-inc/combustion-documentation/blob/main/meatnet_node_ble_specification.rst).
 
-### Legacy `DeviceManager`
-
-The original `DeviceManager` API is still available. It runs its own scanner and maintains its own connections, so it is not suitable for Home Assistant. Use `MeatNet` and the optional host-managed `ProbeSession` and `NodeSession` for new integrations.
-
 ## Documentation
 
 Docs are at https://combustion-ble.readthedocs.io/. The [Combustion BLE specifications](https://github.com/combustion-inc/combustion-documentation) describe the underlying protocol.
