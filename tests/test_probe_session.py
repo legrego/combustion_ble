@@ -105,6 +105,12 @@ class FakeClient:
         self.callbacks[characteristic](None, bytearray(data))
 
 
+async def settle() -> None:
+    """Let queued command and write tasks run until they block."""
+    for _ in range(5):
+        await asyncio.sleep(0)
+
+
 def setup_session(*, timeout: float = 1.0):
     clock = [1000.0]
     meatnet = MeatNet(clock=lambda: clock[0])
@@ -218,7 +224,7 @@ def test_fragmented_corrupt_unrelated_and_combined_responses():
         await session.start()
         client.reply = None
         command = asyncio.create_task(session.set_removal_temperature(60))
-        await asyncio.sleep(0)
+        await settle()
         # Short headers, bad CRC, unrelated frame, and a split response.
         bad = bytearray(response_frame())
         bad[2] ^= 0xFF
@@ -243,7 +249,7 @@ def test_interrupted_commands_close_session(failure):
         client.reply = None
         client.fail_write = failure == "write"
         command = asyncio.create_task(session.set_removal_temperature(60))
-        await asyncio.sleep(0)
+        await settle()
         error: type[BaseException] = ConnectionError
         if failure == "timeout":
             error = TimeoutError
@@ -283,11 +289,11 @@ def test_serialized_commands_and_exclusive_sessions():
         client.reply = None
         first = asyncio.create_task(session.set_removal_temperature(60))
         second = asyncio.create_task(session.cancel_prediction())
-        await asyncio.sleep(0)
+        await settle()
         assert len(client.writes) == 1
         client.emit(UART_TX_CHARACTERISTIC, response_frame())
         await first
-        await asyncio.sleep(0)
+        await settle()
         assert len(client.writes) == 2
         client.emit(UART_TX_CHARACTERISTIC, response_frame())
         await second
@@ -425,5 +431,41 @@ def test_start_cancellation_propagates_when_cleanup_stalls(phase, interrupt):
         replacement = ProbeSession(meatnet, SERIAL, FakeClient())
         await replacement.start()
         await replacement.stop()
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("close", ["disconnect", "stop"])
+def test_closing_interrupts_commands_blocked_on_writes(close):
+    """A stalled write holds the command lock; closing must fail it and the queued command."""
+
+    async def run():
+        meatnet, _, _, _ = setup_session()
+
+        class StallingClient(FakeClient):
+            async def write_gatt_char(self, char_specifier, data, response=True):
+                self.writes.append(bytes(data))
+                await asyncio.Event().wait()
+
+        client = StallingClient()
+        session = ProbeSession(meatnet, SERIAL, client, command_timeout=5)
+        await session.start()
+        writing = asyncio.create_task(session.set_removal_temperature(60))
+        queued = asyncio.create_task(session.cancel_prediction())
+        await settle()
+        assert len(client.writes) == 1  # The second command is waiting for the command lock.
+        if close == "disconnect":
+            client.is_connected = False
+            session.disconnected()
+        else:
+            await session.stop()
+        done, _ = await asyncio.wait({writing, queued}, timeout=0.5)
+        assert done == {writing, queued}, "Commands stayed blocked after the session closed"
+        for command in (writing, queued):
+            with pytest.raises(ConnectionError):
+                await command
+        assert len(client.writes) == 1
+        assert not session._command_lock.locked()
+        await session.stop()
 
     asyncio.run(run())

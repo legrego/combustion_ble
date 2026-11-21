@@ -7,13 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
-- Add firmware and hardware revisions. `Device.firmware_version` is a `FirmwareVersion`, which keeps the reported string and parses `vMAJOR.MINOR.PATCH[-COMMIT-SHA]` for comparisons; `Device.hardware_revision` is a string. Both are `None` until read through a session, notify listeners when they change, and keep their last value after the session closes.
+- Add firmware and hardware revisions. `Device.firmware_version` is a `FirmwareVersion`, which keeps the reported string and parses `vMAJOR.MINOR.PATCH[-COMMIT-SHA]` for comparisons, which ignore the git SHA and build variant, as Combustion's Android SDK does; `Device.hardware_revision` is a string. Both are `None` until read through a session, notify listeners when they change, and keep their last value after the session closes.
 - Add `ProbeSession.read_device_information()` and `NodeSession.read_device_information()`, which read the connected device's Device Information. Information read from a Giant Grill Gauge applies to both its `Gauge` and its `Node`.
 - Add `NodeSession.read_probe_information()`, which reads a probe's firmware and hardware revisions through the repeater.
 - Add `NodeSession.set_removal_temperature()` and `NodeSession.cancel_prediction()`, which set and cancel a probe's target through the repeater. Requests are matched to responses by request ID, so they can run concurrently, and a failed, timed-out, or cancelled request leaves the session running. `NodeSession` takes a `command_timeout`, 30 seconds by default.
 - Add `MeatNet.handle_device_information()`.
 - Add `RequestRejectedError`, the base of `PredictionCommandRejectedError`, which now lives in `combustion_ble.exceptions`. Export `CombustionError`.
 - The `GattClient` protocol now includes `read_gatt_char`, which `BleakClient` already provides. Custom client wrappers need it to read revisions.
+- Fix `ProbeSession` commands blocked on a stalled Bluetooth write, which kept waiting for `command_timeout` after the session closed, then raised `TimeoutError`. Closing the session now fails them, and commands queued behind them, with `ConnectionError` immediately.
 - **Breaking:** remove the unused MeatNet message classes from `combustion_ble.uart.meatnet`, except `NodeMessageType`. `NodeSession` now frames node requests and responses itself.
 
 ## [v0.8.0](https://github.com/legrego/combustion_ble/releases/tag/v0.8.0) - 2026-11-21

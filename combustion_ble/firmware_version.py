@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from functools import total_ordering
 
 
-@total_ordering
 @dataclass(frozen=True, slots=True, eq=False)
 class FirmwareVersion:
     """A device's firmware revision, as reported in its Device Information.
@@ -17,9 +15,10 @@ class FirmwareVersion:
     follow that format.
 
     Parsed versions compare by major, minor, patch, then commit number, where a release (no
-    commit number) sorts before any development build of the same version. Comparing with a
-    version that couldn't be parsed raises ``TypeError``. Equality compares :attr:`raw`, so two
-    builds of the same version with different variants are neither equal nor ordered.
+    commit number) sorts before any development build of the same version. Like Combustion's
+    Android SDK, comparisons ignore the git SHA and build variant: ``v1.2.3_debug`` equals
+    ``v1.2.3_release``. Compare :attr:`raw` to tell such builds apart. Ordering a version that
+    couldn't be parsed raises ``TypeError``; it equals only a version with the same :attr:`raw`.
 
     >>> FirmwareVersion.parse("v1.2.3") < FirmwareVersion.parse("v1.10.0")
     True
@@ -63,23 +62,48 @@ class FirmwareVersion:
         """Whether :attr:`raw` could be parsed into version numbers."""
         return self.major is not None
 
-    def _key(self) -> tuple[int, int, int, int]:
+    def _key(self) -> tuple[int, int, int, int] | None:
         if self.major is None or self.minor is None or self.patch is None:
-            raise TypeError(f"Can't compare unparsed firmware version {self.raw!r}")
+            return None
         return (self.major, self.minor, self.patch, -1 if self.commit is None else self.commit)
+
+    def _ordering_key(self) -> tuple[int, int, int, int]:
+        key = self._key()
+        if key is None:
+            raise TypeError(f"Can't order unparsed firmware version {self.raw!r}")
+        return key
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, FirmwareVersion):
             return NotImplemented
-        return self.raw == other.raw
+        key, other_key = self._key(), other._key()
+        if key is None or other_key is None:
+            return self.raw == other.raw
+        return key == other_key
 
     def __hash__(self) -> int:
-        return hash(self.raw)
+        key = self._key()
+        return hash(self.raw if key is None else key)
 
     def __lt__(self, other: object) -> bool:
         if not isinstance(other, FirmwareVersion):
             return NotImplemented
-        return self._key() < other._key()
+        return self._ordering_key() < other._ordering_key()
+
+    def __le__(self, other: object) -> bool:
+        if not isinstance(other, FirmwareVersion):
+            return NotImplemented
+        return self._ordering_key() <= other._ordering_key()
+
+    def __gt__(self, other: object) -> bool:
+        if not isinstance(other, FirmwareVersion):
+            return NotImplemented
+        return self._ordering_key() > other._ordering_key()
+
+    def __ge__(self, other: object) -> bool:
+        if not isinstance(other, FirmwareVersion):
+            return NotImplemented
+        return self._ordering_key() >= other._ordering_key()
 
     def __str__(self) -> str:
         return self.raw

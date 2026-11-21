@@ -247,19 +247,31 @@ class NodeSession(HostSession):
         frame = encode_node_request(message_type, int.from_bytes(request_id, "little"), payload)
         future: asyncio.Future[_Response] = asyncio.get_running_loop().create_future()
         self._pending[request_id] = (message_type.value, future)
+        # Closing the session fails ``future``, so racing the write against it lets a close
+        # interrupt a request that is still waiting for the write lock or for a stalled write.
+        write = asyncio.ensure_future(self._write(frame))
         try:
             async with asyncio.timeout(self._command_timeout):
-                async with self._write_lock:
-                    if not self._active:
-                        raise ConnectionError("Node session closed")
-                    await self._client.write_gatt_char(UART_RX_CHARACTERISTIC, frame, response=True)
+                await asyncio.wait((write, future), return_when=asyncio.FIRST_COMPLETED)
+                if not future.done():
+                    write.result()  # Raise a write failure.
                 return await future
         finally:
             del self._pending[request_id]
+            if not write.done():
+                write.cancel()
+            elif not write.cancelled():
+                write.exception()  # Consume a write failure after the session closed.
             if not future.done():
                 future.cancel()
             elif not future.cancelled():
                 future.exception()  # Consume a close error even if the write failed first.
+
+    async def _write(self, frame: bytes) -> None:
+        async with self._write_lock:
+            if not self._active:
+                raise ConnectionError("Node session closed")
+            await self._client.write_gatt_char(UART_RX_CHARACTERISTIC, frame, response=True)
 
     def _handle_probe_status(self, payload: bytes) -> None:
         if len(payload) == _LEGACY_PAYLOAD_LENGTH:

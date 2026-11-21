@@ -71,6 +71,12 @@ class NodeClient(FakeClient):
                 self.emit(UART_TX_CHARACTERISTIC, reply)
 
 
+async def settle() -> None:
+    """Let queued request and write tasks run until they block."""
+    for _ in range(5):
+        await asyncio.sleep(0)
+
+
 async def start(responder: Responder | None = acknowledge, *, timeout: float = 1.0):
     meatnet, _ = setup_meatnet()
     client = NodeClient(responder)
@@ -121,7 +127,7 @@ def test_responses_match_by_request_id_and_type():
         meatnet, client, session = await start(None)
         first = asyncio.create_task(session.set_removal_temperature(SERIAL, 60))
         second = asyncio.create_task(session.cancel_prediction(OTHER_SERIAL))
-        await asyncio.sleep(0)
+        await settle()
         assert len(client.requests) == 2
         first_id, second_id = client.requests[0][1], client.requests[1][1]
         # Another app's response, the wrong type for our ID, and a corrupt frame are ignored.
@@ -131,7 +137,7 @@ def test_responses_match_by_request_id_and_type():
             UART_TX_CHARACTERISTIC,
             response_frame(0x05, b"\x01\x02\x03\x04") + response_frame(0x46, first_id) + bad,
         )
-        await asyncio.sleep(0)
+        await settle()
         assert not first.done() and not second.done()
         # Responses arrive out of order, split across notifications and mixed with status.
         frame = response_frame(0x05, second_id, success=False) + node_status_frame(seconds=60)
@@ -155,7 +161,7 @@ def test_failed_request_keeps_session_running(failure):
         meatnet, client, session = await start(None, timeout=0.01 if failure == "timeout" else 1)
         client.fail_write = failure == "write"
         command = asyncio.create_task(session.set_removal_temperature(SERIAL, 60))
-        await asyncio.sleep(0)
+        await settle()
         error: type[BaseException] = TimeoutError
         if failure == "cancel":
             command.cancel()
@@ -185,7 +191,7 @@ def test_closing_fails_pending_requests(close):
             asyncio.create_task(session.set_removal_temperature(SERIAL, 60)),
             asyncio.create_task(session.read_probe_information(SERIAL)),
         ]
-        await asyncio.sleep(0)
+        await settle()
         if close == "disconnect":
             client.is_connected = False
             session.disconnected()
@@ -244,6 +250,43 @@ def test_probe_information_failures():
         with pytest.raises(ValueError):
             await session.read_probe_information(SERIAL)
         assert meatnet.probes[SERIAL].firmware_version is None
+        await session.stop()
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("close", ["disconnect", "stop"])
+def test_closing_interrupts_requests_blocked_on_writes(close):
+    """A stalled write holds the write lock; closing must fail both waiting requests."""
+
+    async def run():
+        meatnet, _ = setup_meatnet()
+
+        class StallingClient(NodeClient):
+            async def write_gatt_char(self, char_specifier, data, response=True):
+                self.writes.append(bytes(data))
+                await asyncio.Event().wait()
+
+        client = StallingClient()
+        session = NodeSession(meatnet, NODE_ADDRESS, client, command_timeout=5)
+        await session.start()
+        writing = asyncio.create_task(session.set_removal_temperature(SERIAL, 60))
+        queued = asyncio.create_task(session.read_probe_information(SERIAL))
+        await settle()
+        assert len(client.writes) == 1  # The second request is waiting for the write lock.
+        if close == "disconnect":
+            client.is_connected = False
+            session.disconnected()
+        else:
+            await session.stop()
+        done, _ = await asyncio.wait({writing, queued}, timeout=0.5)
+        assert done == {writing, queued}, "Requests stayed blocked after the session closed"
+        for request in (writing, queued):
+            with pytest.raises(ConnectionError):
+                await request
+        assert len(client.writes) == 1
+        assert not session._pending
+        assert not session._write_lock.locked()
         await session.stop()
 
     asyncio.run(run())

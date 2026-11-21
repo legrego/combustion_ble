@@ -171,7 +171,9 @@ class Device:
                 _LOGGER.exception("Error in listener for %s", self)
 
     def _observable_state(self) -> tuple[Hashable, ...]:
-        return (self.available, self.firmware_version, self.hardware_revision)
+        # The raw string, because equal versions can differ in build variant.
+        firmware = None if self.firmware_version is None else self.firmware_version.raw
+        return (self.available, firmware, self.hardware_revision)
 
     def _mark_seen(self, now: float) -> None:
         self.last_seen = now

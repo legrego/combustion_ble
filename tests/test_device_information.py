@@ -138,3 +138,29 @@ def test_failed_read_keeps_session_and_earlier_values():
         await session.stop()
 
     asyncio.run(run())
+
+
+def test_build_variants_compare_consistently():
+    debug = FirmwareVersion.parse("v1.2.3_debug")
+    release = FirmwareVersion.parse("v1.2.3_release")
+    assert debug == release
+    assert hash(debug) == hash(release)
+    assert not debug < release and not release < debug
+    assert not debug > release and not release > debug
+    assert debug <= release and release <= debug
+    assert debug >= release and release >= debug
+    assert debug.raw != release.raw
+    assert FirmwareVersion.parse("v1.2.3-4-aaa") == FirmwareVersion.parse("v1.2.3-4-bbb")
+    assert FirmwareVersion.parse("v1.2.3") != FirmwareVersion.parse("v1.2.3-1-aaa")
+    assert FirmwareVersion.parse("v1.2.3_debug") < FirmwareVersion.parse("v1.2.4_debug")
+    assert FirmwareVersion.parse("junk") == FirmwareVersion.parse("junk")
+    assert FirmwareVersion.parse("junk") != FirmwareVersion.parse("v1.0.0")
+
+
+def test_variant_change_notifies_listeners():
+    meatnet = MeatNet()
+    meatnet.handle_advertisement(PROBE_ADDRESS, probe_payload())
+    probe = meatnet.probes[SERIAL]
+    meatnet.handle_device_information(probe, firmware_version="v1.2.3_debug")
+    assert meatnet.handle_device_information(probe, firmware_version="v1.2.3_release") == [probe]
+    assert str(probe.firmware_version) == "v1.2.3_release"

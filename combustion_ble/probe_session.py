@@ -106,17 +106,26 @@ class ProbeSession(HostSession):
                 raise ConnectionError("Probe session is not running")
             future: asyncio.Future[bool] = asyncio.get_running_loop().create_future()
             self._pending = future
+            # Closing the session fails ``future``, so racing the write against it lets a close
+            # interrupt a stalled write, and release the lock for commands queued behind it.
+            write = asyncio.ensure_future(
+                self._client.write_gatt_char(UART_RX_CHARACTERISTIC, request.data, response=True)
+            )
             try:
                 async with asyncio.timeout(self._command_timeout):
-                    await self._client.write_gatt_char(
-                        UART_RX_CHARACTERISTIC, request.data, response=True
-                    )
+                    await asyncio.wait((write, future), return_when=asyncio.FIRST_COMPLETED)
+                    if not future.done():
+                        write.result()  # Raise a write failure.
                     success = await future
             except BaseException:
                 self.disconnected()
                 raise
             finally:
                 self._pending = None
+                if not write.done():
+                    write.cancel()
+                elif not write.cancelled():
+                    write.exception()  # Consume a write failure after the session closed.
                 if not future.done():
                     future.cancel()
                 elif not future.cancelled():
