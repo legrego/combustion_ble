@@ -2,7 +2,28 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+
+_VersionFields = tuple[int | None, int | None, int | None, int | None, str | None]
+
+
+def _parse_fields(raw: str) -> _VersionFields:
+    """Follows FirmwareVersion.fromString in Combustion's Android SDK."""
+    raw = raw.strip()
+    unparsed: _VersionFields = (None, None, None, None, None)
+    if not raw.startswith("v") or raw.count(".") != 2:
+        return unparsed
+    version_and_sha = raw[1:].split("_", 1)[0].split("-")
+    numbers = version_and_sha[0].split(".")
+    if len(numbers) != 3 or not all(number.isdecimal() for number in numbers):
+        return unparsed
+    major, minor, patch = (int(number) for number in numbers)
+    commit: int | None = None
+    sha: str | None = None
+    if len(version_and_sha) == 3:
+        commit = int(version_and_sha[1]) if version_and_sha[1].isdecimal() else None
+        sha = version_and_sha[2]
+    return (major, minor, patch, commit, sha)
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -11,14 +32,15 @@ class FirmwareVersion:
 
     Combustion firmware reports ``vMAJOR.MINOR.PATCH``, optionally followed by
     ``-COMMIT-SHA`` for development builds and ``_VARIANT`` for a build configuration.
-    :attr:`raw` always holds the reported string; the parsed fields are ``None`` when it doesn't
-    follow that format.
+    :attr:`raw` always holds the reported string. The other fields are parsed from it on
+    construction, and are ``None`` when it doesn't follow that format.
 
     Parsed versions compare by major, minor, patch, then commit number, where a release (no
     commit number) sorts before any development build of the same version. Like Combustion's
     Android SDK, comparisons ignore the git SHA and build variant: ``v1.2.3_debug`` equals
-    ``v1.2.3_release``. Compare :attr:`raw` to tell such builds apart. Ordering a version that
-    couldn't be parsed raises ``TypeError``; it equals only a version with the same :attr:`raw`.
+    ``v1.2.3_release``. Compare :attr:`raw` to tell such builds apart. A version that couldn't be
+    parsed equals only another unparsed version with the same :attr:`raw`, and ordering it raises
+    ``TypeError``.
 
     >>> FirmwareVersion.parse("v1.2.3") < FirmwareVersion.parse("v1.10.0")
     True
@@ -29,33 +51,25 @@ class FirmwareVersion:
     raw: str
     """The firmware revision string, as the device reported it."""
 
-    major: int | None = None
-    minor: int | None = None
-    patch: int | None = None
-    commit: int | None = None
+    major: int | None = field(init=False, default=None)
+    minor: int | None = field(init=False, default=None)
+    patch: int | None = field(init=False, default=None)
+    commit: int | None = field(init=False, default=None)
     """Commits since the release, for development builds."""
 
-    sha: str | None = None
+    sha: str | None = field(init=False, default=None)
     """Abbreviated git commit, for development builds."""
+
+    def __post_init__(self) -> None:
+        # Derived from raw, so equal raw strings always give equal keys and hashes.
+        fields = zip(("major", "minor", "patch", "commit", "sha"), _parse_fields(self.raw))
+        for name, value in fields:
+            object.__setattr__(self, name, value)
 
     @classmethod
     def parse(cls, raw: str) -> FirmwareVersion:
-        """Parse a firmware revision string. Never raises for an unexpected format."""
-        raw = raw.strip()
-        # Follows FirmwareVersion.fromString in Combustion's Android SDK.
-        if not raw.startswith("v") or raw.count(".") != 2:
-            return cls(raw)
-        version_and_sha = raw[1:].split("_", 1)[0].split("-")
-        numbers = version_and_sha[0].split(".")
-        if len(numbers) != 3 or not all(number.isdecimal() for number in numbers):
-            return cls(raw)
-        major, minor, patch = (int(number) for number in numbers)
-        commit: int | None = None
-        sha: str | None = None
-        if len(version_and_sha) == 3:
-            commit = int(version_and_sha[1]) if version_and_sha[1].isdecimal() else None
-            sha = version_and_sha[2]
-        return cls(raw, major, minor, patch, commit, sha)
+        """Parse a firmware revision string, trimming whitespace. Never raises."""
+        return cls(raw.strip())
 
     @property
     def is_valid(self) -> bool:
@@ -77,9 +91,9 @@ class FirmwareVersion:
         if not isinstance(other, FirmwareVersion):
             return NotImplemented
         key, other_key = self._key(), other._key()
-        if key is None or other_key is None:
+        if key is None and other_key is None:
             return self.raw == other.raw
-        return key == other_key
+        return key == other_key  # A parsed and an unparsed version are never equal.
 
     def __hash__(self) -> int:
         key = self._key()

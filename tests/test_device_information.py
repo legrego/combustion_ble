@@ -111,7 +111,8 @@ def test_sessions_read_device_information(kind):
         await session.start()
         await session.read_device_information()
         assert client.reads == [FW_VERSION_CHARACTERISTIC, HW_VERSION_CHARACTERISTIC]
-        assert device.firmware_version == FirmwareVersion("v1.4.2", major=1, minor=4, patch=2)
+        assert device.firmware_version == FirmwareVersion("v1.4.2")
+        assert (device.firmware_version.major, device.firmware_version.patch) == (1, 2)
         assert device.hardware_revision == "v3"
         assert not client.writes
         await session.stop()
@@ -164,3 +165,22 @@ def test_variant_change_notifies_listeners():
     meatnet.handle_device_information(probe, firmware_version="v1.2.3_debug")
     assert meatnet.handle_device_information(probe, firmware_version="v1.2.3_release") == [probe]
     assert str(probe.firmware_version) == "v1.2.3_release"
+
+
+def test_constructed_and_parsed_versions_hash_consistently():
+    direct, parsed = FirmwareVersion("v1.2.3"), FirmwareVersion.parse("v1.2.3")
+    assert direct.is_valid
+    assert direct == parsed
+    assert hash(direct) == hash(parsed)
+    assert parsed in {direct}
+    assert {direct: "found"}[parsed] == "found"
+    # Equality stays transitive across build variants however the version was created.
+    debug, release = FirmwareVersion("v1.2.3_debug"), FirmwareVersion.parse("v1.2.3_release")
+    assert direct == debug == release and direct == release
+    assert len({direct, parsed, debug, release}) == 1
+    # Unparsed versions only equal unparsed versions with the same string.
+    assert FirmwareVersion("junk") == FirmwareVersion.parse(" junk ")
+    assert hash(FirmwareVersion("junk")) == hash(FirmwareVersion.parse("junk"))
+    assert FirmwareVersion("junk") != parsed
+    with pytest.raises(TypeError):
+        FirmwareVersion("v1.2.3", 1)  # type: ignore[call-arg]
