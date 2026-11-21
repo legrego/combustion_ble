@@ -60,6 +60,24 @@ Host-managed predictions
 .. autoclass:: combustion_ble.CookingPrediction
     :members:
 
+.. autoclass:: combustion_ble.FoodSafe
+    :members:
+
+.. autoclass:: combustion_ble.FoodSafeState
+    :members:
+
+.. autoclass:: combustion_ble.FoodSafeMode
+    :members:
+
+.. autoclass:: combustion_ble.SimplifiedProduct
+    :members:
+
+.. autoclass:: combustion_ble.IntegratedProduct
+    :members:
+
+.. autoclass:: combustion_ble.Serving
+    :members:
+
 .. autoexception:: combustion_ble.PredictionCommandRejectedError
 ```
 

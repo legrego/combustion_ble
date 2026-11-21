@@ -134,7 +134,10 @@ class ProbeSession(HostSession):
             status = ProbeStatus.from_data(bytes(data))
             if status is not None:
                 self._meatnet.handle_prediction_status(
-                    self._probe.serial_number, status.prediction_status, source=self
+                    self._probe.serial_number,
+                    status.prediction_status,
+                    food_safe=status.food_safe,
+                    source=self,
                 )
         except ValueError, IndexError:
             LOGGER.debug("Ignoring malformed connected probe status")

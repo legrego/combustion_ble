@@ -102,3 +102,45 @@ def gauge_payload(
 def node_payload(product_type: int, serial_number: str = "1234ABCD99") -> bytes:
     """Build Display (4), Booster (5), or Engine (6) device information advertising data."""
     return bytes([product_type]) + serial_number.encode("ascii").ljust(10, b"\x00") + bytes(12)
+
+
+def encode_food_safe_data(
+    *,
+    mode: int = 1,
+    product: int = 1,
+    serving: int = 0,
+    threshold: float = 54.4,
+    z_value: float = 5.6,
+    reference: float = 60.0,
+    d_value: float = 3.5,
+    target_log_reduction: float = 6.5,
+) -> bytes:
+    """Pack the 10-byte food safe data field."""
+    raw = (
+        mode
+        | product << 3
+        | serving << 13
+        | round(threshold / 0.05) << 16
+        | round(z_value / 0.05) << 29
+        | round(reference / 0.05) << 42
+        | round(d_value / 0.05) << 55
+        | round(target_log_reduction / 0.1) << 68
+    )
+    return raw.to_bytes(10, "little")
+
+
+def encode_food_safe_status(
+    *,
+    state: int = 0,
+    log_reduction: float = 2.3,
+    seconds_above_threshold: int = 754,
+    sequence_number: int = 0xFEDCBA98,
+) -> bytes:
+    """Pack the 8-byte food safe status field."""
+    raw = (
+        state
+        | round(log_reduction / 0.1) << 3
+        | seconds_above_threshold << 11
+        | sequence_number << 27
+    )
+    return raw.to_bytes(8, "little")

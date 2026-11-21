@@ -1,137 +1,130 @@
-"""Food Safe Data.
+"""Food Safe Data: the SafeCook program a probe is running.
 
-NOTE: This file does not have an upstream match
+Decoded from the 10-byte packed field in the Probe Status characteristic and in relayed MeatNet
+Probe Status (0x45) messages. Fields are packed least significant bit first.
 """
 
-from enum import Enum, unique
+from __future__ import annotations
+
+from dataclasses import dataclass
+from enum import Enum, IntEnum, unique
+
+FOOD_SAFE_DATA_LENGTH = 10
 
 
 @unique
-class FoodSafeMode(Enum):
-    """Food Safe Mode."""
+class FoodSafeMode(IntEnum):
+    """How the probe decides when food is safe."""
 
-    SIMPLIFIED = 0x00
-    INTEGRATED = 0x01
+    SIMPLIFIED = 0
+    """Safe once the core reaches the product's USDA threshold temperature."""
 
-
-class Product(Enum):
-    pass
-
-
-@unique
-class SimplifiedProduct(Product):
-    """Selected product for food-safety using the simplified mode."""
-
-    DEFAULT = 0x00
-    ANY_POULTRY = 0x01
-    BEEF_CUTS = 0x02
-    PORK_CUTS = 0x03
-    VEAL_CUTS = 0x04
-    LAMB_CUTS = 0x05
-    GROUND_MEATS = 0x06
-    HAM_FRESH_SMOKED = 0x07
-    HAM_COOKED = 0x08
-    EGGS = 0x09
-    FISH = 0xA
-    LEFTOVERS = 0xB
-    CASSEROLES = 0xC
+    INTEGRATED = 1
+    """Safe once the integrated log reduction reaches the target (time at temperature)."""
 
 
 @unique
-class IntegratedProduct(Product):
-    """Selected product for food-safety using the integrated mode."""
+class SimplifiedProduct(IntEnum):
+    """Product selected for a Simplified mode program."""
 
-    DEFAULT = 0x00
-    BEEF = 0x01
-    BEEF_GROUND = 0x02
-    CHICKEN = 0x03
-    CHICKEN_GROUND = 0x04
-    PORK = 0x05
-    PORK_GROUND = 0x06
-    HAM = 0x07
-    HAM_GROUND = 0x08
-    TURKEY = 0x09
-    TURKEY_GROUND = 0xA
-    LAMB = 0xB
-    LAMB_GROUND = 0xC
-    FISH = 0xD
-    FISH_GROUND = 0xE
-    DAIRY = 0xF
-    CUSTOM = 0x3FF
+    DEFAULT = 0
+    ANY_POULTRY = 1
+    BEEF_CUTS = 2
+    PORK_CUTS = 3
+    VEAL_CUTS = 4
+    LAMB_CUTS = 5
+    GROUND_MEATS = 6
+    HAM_FRESH_OR_SMOKED = 7
+    HAM_COOKED_AND_REHEATED = 8
+    EGGS = 9
+    FISH_AND_SHELLFISH = 10
+    LEFTOVERS = 11
+    CASSEROLES = 12
 
 
 @unique
-class Serving(Enum):
-    """Serving options for which safety calculations are available."""
+class IntegratedProduct(IntEnum):
+    """Product selected for an Integrated mode program.
+
+    The probe only stores this so that apps can sync it. Values 3 and 5-12 are deprecated.
+    """
+
+    POULTRY = 0
+    MEATS = 1
+    MEATS_GROUND = 2
+    POULTRY_GROUND = 4
+    SEAFOOD = 13
+    SEAFOOD_GROUND = 14
+    DAIRY_MILK = 15
+    OTHER = 16
+    SEAFOOD_STUFFED = 17
+    EGGS = 18
+    EGGS_YOLK = 19
+    EGGS_WHITE = 20
+    DAIRY_CREAMS = 21
+    DAIRY_ICE_CREAM_MIX = 22
+    CUSTOM = 1023
+
+
+@unique
+class Serving(IntEnum):
+    """How the food will be served, which sets the target for safety calculations."""
 
     SERVED_IMMEDIATELY = 0
     COOKED_AND_CHILLED = 1
 
 
+def _enum_or_int[E: Enum](enum: type[E], raw: int) -> E | int:
+    try:
+        return enum(raw)
+    except ValueError:
+        return raw
+
+
+@dataclass(frozen=True, slots=True)
 class FoodSafeData:
-    def __init__(
-        self,
-        food_safe_mode: FoodSafeMode,
-        product: Product,
-        serving: Serving,
-        selected_threshold_reference_temperature: float,
-        z_value: float,
-        reference_temperature: float,
-        d_value_at_rt: float,
-        target_log_reduction: float,
-    ) -> None:
-        self.food_safe_mode = food_safe_mode
-        self.product = product
-        self.serving = serving
-        self.selected_threshold_reference_temperature = selected_threshold_reference_temperature
-        self.z_value = z_value
-        self.reference_temperature = reference_temperature
-        d_value_at_rt = d_value_at_rt
-        target_log_reduction = target_log_reduction
+    """A probe's SafeCook program.
+
+    ``mode``, ``product``, and ``serving`` are left as raw integers when the firmware reports a
+    value this library doesn't know. Temperatures are Celsius.
+    """
+
+    mode: FoodSafeMode | int
+    product: SimplifiedProduct | IntegratedProduct | int
+    serving: Serving | int
+    threshold_temperature: float
+    """Selected threshold reference temperature."""
+    z_value: float
+    reference_temperature: float
+    d_value: float
+    """D-value at the reference temperature."""
+    target_log_reduction: float
 
     @classmethod
-    def from_raw(cls, data: bytes):
-        # ____LLLL LLLLDDDD DDDDDDDD DRRRRRRR RRRRRRZZ ZZZZZZZZ ZZZTTTTT TTTTTTTT SSSPPPPP PPPPPMMM
-        # 00000100 01101000 11111001 00010010 11000000 00001101 10000100 11101000 00100000 00100001
+    def from_bytes(cls, data: bytes) -> FoodSafeData:
+        if len(data) < FOOD_SAFE_DATA_LENGTH:
+            raise ValueError(f"Food safe data needs {FOOD_SAFE_DATA_LENGTH} bytes")
+        raw = int.from_bytes(data[:FOOD_SAFE_DATA_LENGTH], "little")
 
-        payload = list(data)
-        payload.reverse()
-
-        mode_raw = payload[9] & 0x7
-        mode = FoodSafeMode(mode_raw)
-
-        product_raw = ((payload[8] & 0x1F) << 5) | (payload[9] >> 3)
-        product: Product | None = None
-        if mode == FoodSafeMode.SIMPLIFIED:
-            product = SimplifiedProduct(product_raw)
-        elif mode == FoodSafeMode.INTEGRATED:
-            product = IntegratedProduct(product_raw)
-
-        serving_raw = payload[8] >> 5
-        serving = Serving(serving_raw)
-
-        threshold_ref_temp_raw = ((payload[6] & 0x1F) << 8) | payload[7]
-        threshold_ref_temp = float(threshold_ref_temp_raw) * 0.05
-
-        z_value_raw = ((payload[4] & 0x03) << 11) | (payload[5] << 3) | (payload[6] >> 5)
-        z_value = float(z_value_raw) * 0.05
-
-        ref_temp_raw = ((payload[3] & 0x7F) << 6) | (payload[4] >> 2)
-        ref_temp = float(ref_temp_raw) * 0.05
-
-        d_value_raw = ((payload[1] & 0xF) << 9) | (payload[2] << 1) | (payload[3] >> 7)
-        d_value = float(d_value_raw) * 0.05
-
-        target_log_reduction_raw = ((payload[0] & 0xF) << 4) | (payload[1] >> 4)
-        target_log_reduction = float(target_log_reduction_raw) * 0.1
+        mode = _enum_or_int(FoodSafeMode, raw & 0x7)
+        raw_product = (raw >> 3) & 0x3FF
+        product: SimplifiedProduct | IntegratedProduct | int = raw_product
+        if mode is FoodSafeMode.SIMPLIFIED:
+            product = _enum_or_int(SimplifiedProduct, raw_product)
+        elif mode is FoodSafeMode.INTEGRATED:
+            product = _enum_or_int(IntegratedProduct, raw_product)
 
         return cls(
-            food_safe_mode=mode,
+            mode=mode,
             product=product,
-            serving=serving,
-            selected_threshold_reference_temperature=threshold_ref_temp,
-            z_value=z_value,
-            reference_temperature=ref_temp,
-            d_value_at_rt=d_value,
-            target_log_reduction=target_log_reduction,
+            serving=_enum_or_int(Serving, (raw >> 13) & 0x7),
+            threshold_temperature=_temperature(raw >> 16),
+            z_value=_temperature(raw >> 29),
+            reference_temperature=_temperature(raw >> 42),
+            d_value=_temperature(raw >> 55),
+            target_log_reduction=round(((raw >> 68) & 0xFF) * 0.1, 1),
         )
+
+
+def _temperature(raw: int) -> float:
+    return round((raw & 0x1FFF) * 0.05, 2)
