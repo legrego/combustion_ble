@@ -19,8 +19,9 @@ from combustion_ble.ble_data.food_safe_status import FoodSafeStatus
 class FoodSafe:
     """A probe's SafeCook program and its progress. Temperatures are Celsius.
 
-    Probes report a program even when nobody has set one up in the Combustion app. Enum fields
-    are left as raw integers when the firmware reports a value this library doesn't know.
+    Probes report SafeCook data even when SafeCook is off; check :attr:`program_set` before
+    using the rest. Enum fields are left as raw integers when the firmware reports a value this
+    library doesn't know.
     """
 
     state: FoodSafeState | int
@@ -36,6 +37,27 @@ class FoodSafe:
     d_value: float
     """D-value at :attr:`reference_temperature`."""
     target_log_reduction: float
+
+    @property
+    def program_set(self) -> bool:
+        """Whether the probe has a SafeCook program.
+
+        Turning SafeCook off in the Combustion app writes an all-zero program, which decodes as
+        Simplified mode with the Default product and every temperature and parameter 0. No real
+        program has a 0 °C threshold or a 0 log target, so this is ``False`` only for that.
+        """
+        return any(
+            (
+                self.mode,
+                self.product,
+                self.serving,
+                self.threshold_temperature,
+                self.z_value,
+                self.reference_temperature,
+                self.d_value,
+                self.target_log_reduction,
+            )
+        )
 
     @classmethod
     def from_status(cls, data: FoodSafeData, status: FoodSafeStatus) -> FoodSafe:

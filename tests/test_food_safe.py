@@ -101,6 +101,23 @@ def test_food_safe_status_fields():
     )
 
 
+def test_program_set():
+    assert EXPECTED.program_set
+    # Turning SafeCook off in the app writes an all-zero program, as captured from a Booster.
+    off = ProbeStatus.from_data(status_payload(food_safe=bytes(18))).food_safe
+    assert off is not None
+    assert off.mode is FoodSafeMode.SIMPLIFIED and off.product is SimplifiedProduct.DEFAULT
+    assert not off.program_set
+    # A real Simplified program for the Default product has a threshold.
+    default_product = ProbeStatus.from_data(
+        status_payload(
+            food_safe=encode_food_safe_data(mode=0, product=0, threshold=73.9)
+            + encode_food_safe_status()
+        )
+    ).food_safe
+    assert default_product is not None and default_product.program_set
+
+
 def test_short_fields_raise():
     with pytest.raises(ValueError):
         FoodSafeData.from_bytes(bytes(9))
