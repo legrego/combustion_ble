@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [v0.9.0](https://github.com/legrego/combustion_ble/releases/tag/v0.9.0) - 2026-11-21
+
 - Add firmware and hardware revisions. `Device.firmware_version` is a `FirmwareVersion`, which keeps the reported string and parses `vMAJOR.MINOR.PATCH[-COMMIT-SHA]` for comparisons, which ignore the git SHA and build variant, as Combustion's Android SDK does; `Device.hardware_revision` is a string. Both are `None` until read through a session, notify listeners when they change, and keep their last value after the session closes.
 - Add `ProbeSession.read_device_information()` and `NodeSession.read_device_information()`, which read the connected device's Device Information. Information read from a Giant Grill Gauge applies to both its `Gauge` and its `Node`.
 - Add `NodeSession.read_probe_information()`, which reads a probe's firmware and hardware revisions through the repeater.
