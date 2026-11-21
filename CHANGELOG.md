@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [v0.7.0](https://github.com/legrego/combustion_ble/releases/tag/v0.7.0) - 2026-11-21
+
 - Add read-only SafeCook support. `Probe.food_safe` is an immutable `FoodSafe` that combines the probe's SafeCook program (mode, product, serving, and its thermal parameters) with its progress (state, log reduction, and seconds above threshold). `ProbeSession` and `NodeSession` read it from the same status as predictions. It follows the same source and freshness rules as `Probe.prediction`, and it is `None` when the firmware doesn't report it. `FoodSafe.program_set` is `False` when SafeCook is off, which probes report as an all-zero program.
 - `MeatNet.handle_prediction_status()` accepts a `food_safe` snapshot, and `clear_prediction()` clears it with the prediction.
 - Fix `FoodSafeData`, which ignored the D-value and target log reduction and used outdated Integrated mode products. Unknown enum values are now kept as integers instead of raising.
