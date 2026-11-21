@@ -38,7 +38,9 @@ from combustion_ble.ble_data.virtual_sensors import (
     VirtualCoreSensor,
     VirtualSurfaceSensor,
 )
+from combustion_ble.connection_plan import ConnectionPlan, plan_connections
 from combustion_ble.meatnet import Device, Gauge, MeatNet, Node, Probe, ProbeRoute
+from combustion_ble.node_session import NodeSession
 from combustion_ble.prediction.cooking_prediction import CookingPrediction
 from combustion_ble.probe_session import PredictionCommandRejectedError, ProbeSession
 from combustion_ble.version import VERSION, VERSION_SHORT
@@ -70,6 +72,7 @@ __all__ = [
     # Legacy DeviceManager stack (loaded lazily)
     "BluetoothMode",
     "CombustionProductType",
+    "ConnectionPlan",
     "CookingPrediction",
     "Device",
     "DeviceManager",
@@ -79,6 +82,7 @@ __all__ = [
     "MeatNet",
     "Node",
     "NodeAdvertisement",
+    "NodeSession",
     "PowerMode",
     "PredictionMode",
     "PredictionCommandRejectedError",
@@ -99,4 +103,5 @@ __all__ = [
     "VirtualSurfaceSensor",
     "VirtualTemperatures",
     "parse_advertisement",
+    "plan_connections",
 ]

@@ -9,8 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import math
-from collections.abc import Callable
-from typing import Any, Protocol
+from typing import Any
 
 from combustion_ble.ble_data.prediction_mode import PredictionMode
 from combustion_ble.ble_data.probe_status import ProbeStatus
@@ -20,6 +19,7 @@ from combustion_ble.const import (
     UART_TX_CHARACTERISTIC,
 )
 from combustion_ble.exceptions import CombustionError
+from combustion_ble.host_session import GattClient, HostSession, NotificationCallback
 from combustion_ble.logger import LOGGER
 from combustion_ble.meatnet import MeatNet
 from combustion_ble.uart.message_type import MessageType
@@ -27,35 +27,20 @@ from combustion_ble.uart.set_prediction import SetPredictionRequest
 from combustion_ble.utilities.crc16ccitt import crc16ccitt
 
 
-class GattClient(Protocol):
-    """The subset of a connected ``bleak.BleakClient`` used by a probe session."""
-
-    @property
-    def is_connected(self) -> bool: ...
-
-    async def start_notify(
-        self, char_specifier: str, callback: Callable[[Any, bytearray], None]
-    ) -> None: ...
-
-    async def stop_notify(self, char_specifier: str) -> None: ...
-
-    async def write_gatt_char(
-        self, char_specifier: str, data: bytes | bytearray, response: bool = True
-    ) -> None: ...
-
-
 class PredictionCommandRejectedError(CombustionError):
     """The probe acknowledged a prediction command but rejected it."""
 
 
-class ProbeSession:
+class ProbeSession(HostSession):
     """Subscribe to a direct probe and control predictions through a host-owned client.
 
     Discover the probe in ``meatnet`` first. The caller must supply a client connected to that
-    probe (not a repeater). Only one session per probe is allowed. The caller owns the client's
+    probe; use :class:`NodeSession` for a MeatNet repeater. Only one session per probe is allowed. The caller owns the client's
     disconnect callback and must call :meth:`disconnected` from it, then :meth:`stop` for cleanup.
     Stopping a session never disconnects its client or cancels a cook on the probe.
     """
+
+    _already_owned_message = "This probe already has a prediction session"
 
     def __init__(
         self,
@@ -67,64 +52,13 @@ class ProbeSession:
     ) -> None:
         if not math.isfinite(command_timeout) or command_timeout <= 0:
             raise ValueError("Command timeout must be finite and positive")
+        super().__init__(client)
         self._meatnet = meatnet
         self._probe = meatnet.probes[serial_number]
-        self._client = client
         self._command_timeout = command_timeout
-        self._lifecycle_lock = asyncio.Lock()
         self._command_lock = asyncio.Lock()
-        self._subscribed: list[str] = []
-        self._active = False
-        self._ready = False
-        self._closed = False
         self._pending: asyncio.Future[bool] | None = None
         self._uart_buffer = bytearray()
-
-    async def start(self) -> None:
-        """Subscribe to status and command responses on an already-connected client.
-
-        Prediction data arrives with the next status notification. A failed start attempts
-        subscription cleanup and closes the session. Cancellation closes it immediately without
-        awaiting cleanup, preserving the host's deadline. Always call :meth:`stop` in the host's
-        ``finally`` block, with its own deadline, and disconnect the client if cleanup stalls.
-        """
-        async with self._lifecycle_lock:
-            if self._closed:
-                raise RuntimeError("Create a new session after stopping or disconnecting")
-            if self._ready:
-                return
-            if not self._client.is_connected:
-                raise ConnectionError("Probe client is not connected")
-            if self._probe._prediction_session is not None:
-                raise RuntimeError("This probe already has a prediction session")
-            self._probe._prediction_session = self
-            self._active = True
-            try:
-                for characteristic, callback in (
-                    (UART_TX_CHARACTERISTIC, self._handle_uart),
-                    (DEVICE_STATUS_CHARACTERISTIC, self._handle_status),
-                ):
-                    self._subscribed.append(characteristic)
-                    await self._client.start_notify(characteristic, callback)
-                    if not self._active or not self._client.is_connected:
-                        raise ConnectionError("Probe disconnected while subscribing")
-                self._ready = True
-            except asyncio.CancelledError:
-                # An expired host timeout has already delivered its cancellation. Awaiting GATT
-                # cleanup here could stall indefinitely without another cancellation to stop it.
-                # Keep ownership until the host calls stop(), so old subscriptions cannot race
-                # with a replacement session.
-                self.disconnected()
-                raise
-            except Exception:
-                self.disconnected()
-                try:
-                    await self._stop_notifications()
-                except Exception:
-                    LOGGER.exception("Failed cleaning up probe subscriptions after start failure")
-                else:
-                    self._probe._prediction_session = None
-                raise
 
     def disconnected(self) -> None:
         """Invalidate predictions and fail pending work immediately, without Bluetooth I/O.
@@ -133,44 +67,27 @@ class ProbeSession:
         a timed-out, cancelled, or failed command: direct probe responses have no request IDs,
         so a late acknowledgement cannot safely be assigned to another command.
         """
-        self._active = False
-        self._ready = False
-        self._closed = True
+        super().disconnected()
+
+    def _notifications(self) -> tuple[tuple[str, NotificationCallback], ...]:
+        return (
+            (UART_TX_CHARACTERISTIC, self._handle_uart),
+            (DEVICE_STATUS_CHARACTERISTIC, self._handle_status),
+        )
+
+    def _get_owner(self) -> object | None:
+        return self._probe._prediction_session
+
+    def _set_owner(self, owner: object | None) -> None:
+        self._probe._prediction_session = owner
+
+    def _on_close(self) -> None:
         self._uart_buffer.clear()
         if self._pending is not None and not self._pending.done():
             self._pending.set_exception(ConnectionError("Probe session closed"))
-        if self._probe._prediction_session is self:
-            # Retain ownership until stop() removes old subscriptions, so another session cannot
-            # start on this probe while cleanup could still unsubscribe its notifications.
-            self._meatnet.clear_prediction(self._probe.serial_number)
 
-    async def stop(self) -> None:
-        """Fail pending work, clear predictions, and remove every subscription.
-
-        Safe to call repeatedly, including after disconnect. The host should bound cleanup with
-        its own timeout. If cleanup fails or is cancelled, disconnect the client and call stop()
-        again to release ownership without Bluetooth I/O before creating a replacement session.
-        """
-        async with self._lifecycle_lock:
-            self.disconnected()
-            await self._stop_notifications()
-            if self._probe._prediction_session is self:
-                self._probe._prediction_session = None
-
-    async def _stop_notifications(self) -> None:
-        failed: list[str] = []
-        error: Exception | None = None
-        for characteristic in reversed(self._subscribed):
-            if not self._client.is_connected:
-                break
-            try:
-                await self._client.stop_notify(characteristic)
-            except Exception as exc:
-                failed.append(characteristic)
-                error = exc
-        self._subscribed = failed
-        if error is not None:
-            raise error
+    def _clear_predictions(self) -> None:
+        self._meatnet.clear_prediction(self._probe.serial_number, source=self)
 
     async def set_removal_temperature(self, celsius: float) -> None:
         """Set a removal target (0–102.3 Celsius, rounded to 0.1) and await acknowledgement.
@@ -217,7 +134,7 @@ class ProbeSession:
             status = ProbeStatus.from_data(bytes(data))
             if status is not None:
                 self._meatnet.handle_prediction_status(
-                    self._probe.serial_number, status.prediction_status
+                    self._probe.serial_number, status.prediction_status, source=self
                 )
         except ValueError, IndexError:
             LOGGER.debug("Ignoring malformed connected probe status")

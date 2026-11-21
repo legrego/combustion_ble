@@ -46,6 +46,16 @@ Host-managed predictions
 ```{eval-rst}
 .. autoclass:: combustion_ble.ProbeSession
     :members:
+    :inherited-members:
+
+.. autoclass:: combustion_ble.NodeSession
+    :members:
+    :inherited-members:
+
+.. autofunction:: combustion_ble.plan_connections
+
+.. autoclass:: combustion_ble.ConnectionPlan
+    :members:
 
 .. autoclass:: combustion_ble.CookingPrediction
     :members:

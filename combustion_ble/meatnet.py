@@ -56,6 +56,13 @@ DEFAULT_STALE_TIMEOUT = 15.0
 PREDICTION_STALE_TIMEOUT = 15.0
 """Seconds without connected status before a prediction is cleared."""
 
+PREDICTION_FAILOVER_TIMEOUT = 12.0
+"""Seconds of silence from the preferred prediction source before a worse one may replace it.
+
+MeatNet repeaters relay each probe's status only about every 5 seconds, so this must be well above
+that gap, and below :data:`PREDICTION_STALE_TIMEOUT`.
+"""
+
 NORMAL_MODE_IDLE_TIMEOUT = 5.0
 """Seconds before normal mode data from a worse link may replace data from the preferred link."""
 
@@ -100,6 +107,21 @@ class ProbeRoute:
     """Number of hops between the node and the probe (1-4)."""
 
     last_seen: float
+
+
+@dataclass(frozen=True, slots=True)
+class _PredictionFeed:
+    """The latest prediction from one connected source (a direct probe or MeatNet node session)."""
+
+    rank: int
+    """0 for status read directly from the probe, otherwise the MeatNet hop count."""
+
+    prediction: CookingPrediction
+    updated_at: float
+
+
+_HOST_SOURCE = object()
+"""Source key for prediction statuses supplied without a ``source``."""
 
 
 class Device:
@@ -156,8 +178,9 @@ class Probe(Device):
         self.prediction: CookingPrediction | None = None
         """Latest connected prediction, or ``None`` when unknown, stale, or disconnected."""
         self.prediction_updated_at: float | None = None
-        """Monotonic clock time of the latest connected prediction status."""
-        self._prediction_seconds: int | None = None
+        """Monotonic clock time of the status behind :attr:`prediction`."""
+        self._prediction_feeds: dict[object, _PredictionFeed] = {}
+        self._prediction_source: object | None = None
         self._prediction_session: object | None = None
 
         self.mode: ProbeMode = ProbeMode.NORMAL
@@ -381,16 +404,49 @@ class Probe(Device):
         self.instant_read_raw_celsius = None
         self._instant_read_filter = InstantReadFilter()
 
+    def _update_prediction(self, now: float) -> None:
+        """Choose which connected source supplies :attr:`prediction`, and advance its countdown.
+
+        Like the Combustion Android SDK, prefer a direct probe connection, then the MeatNet node
+        with the lowest hop count. Stay with the current source on ties, and let a worse source
+        take over once the current one has been quiet for :data:`PREDICTION_FAILOVER_TIMEOUT`.
+        """
+        feeds = self._prediction_feeds
+        for key, feed in list(feeds.items()):
+            if now - feed.updated_at > PREDICTION_STALE_TIMEOUT:
+                del feeds[key]
+        if not feeds:
+            self._prediction_source = None
+            self.prediction = None
+            self.prediction_updated_at = None
+            return
+
+        def live(feed: _PredictionFeed) -> bool:
+            return now - feed.updated_at <= PREDICTION_FAILOVER_TIMEOUT
+
+        best_key = min(
+            feeds,
+            key=lambda key: (not live(feeds[key]), feeds[key].rank, -feeds[key].updated_at),
+        )
+        current = feeds.get(self._prediction_source)
+        if current is None or (live(feeds[best_key]) and not live(current)):
+            self._prediction_source = best_key
+        elif live(current) and feeds[best_key].rank < current.rank:
+            self._prediction_source = best_key
+
+        feed = feeds[self._prediction_source]
+        prediction = feed.prediction
+        if prediction.seconds_remaining is not None:
+            elapsed = max(0.0, now - feed.updated_at)
+            prediction = replace(
+                prediction, seconds_remaining=max(0, prediction.seconds_remaining - int(elapsed))
+            )
+        self.prediction = prediction
+        self.prediction_updated_at = feed.updated_at
+
     def _expire(self, now: float, stale_timeout: float) -> None:
-        if self.prediction is not None and self.prediction_updated_at is not None:
-            elapsed = max(0.0, now - self.prediction_updated_at)
-            if elapsed > PREDICTION_STALE_TIMEOUT:
-                self.prediction = None
-            elif self._prediction_seconds is not None:
-                self.prediction = replace(
-                    self.prediction,
-                    seconds_remaining=max(0, self._prediction_seconds - int(elapsed)),
-                )
+        if self._prediction_feeds:
+            self._update_prediction(now)
         last_used = self._instant_read_last_used
         if (
             self.instant_read_celsius is not None
@@ -492,6 +548,8 @@ class Node(Device):
 
         self.relayed_probes: dict[int, ProbeRoute] = {}
         """Probes this node is currently relaying, by probe serial number."""
+
+        self._prediction_session: object | None = None
 
     def __repr__(self) -> str:
         return f"Node({self.address})"
@@ -654,29 +712,48 @@ class MeatNet:
         return self._publish(tracker)
 
     def handle_prediction_status(
-        self, serial_number: int, status: PredictionStatus
+        self,
+        serial_number: int,
+        status: PredictionStatus,
+        *,
+        source: object | None = None,
+        hop_count: int | None = None,
     ) -> list[Device]:
         """Apply connected prediction data to an already discovered probe.
+
+        :param source: Identifies the connection the status arrived on, such as the session
+            object, so that several connections can report the same probe. ``None`` is a single
+            default source.
+        :param hop_count: Number of MeatNet hops (1-4) the status was relayed across, or ``None``
+            when it was read directly from the probe. When several sources report the same probe,
+            :attr:`Probe.prediction` follows the direct one, then the one with the fewest hops.
 
         This does not refresh advertisement availability or overwrite passive temperature data.
         Identical statuses refresh prediction freshness without notifying listeners.
         """
         probe = self._probes[serial_number]
+        now = self._clock()
         tracker = _ChangeTracker()
         tracker.watch(probe)
-        probe.prediction = CookingPrediction.from_status(status)
-        probe.prediction_updated_at = self._clock()
-        probe._prediction_seconds = probe.prediction.seconds_remaining
+        probe._prediction_feeds[_HOST_SOURCE if source is None else source] = _PredictionFeed(
+            rank=0 if hop_count is None else hop_count,
+            prediction=CookingPrediction.from_status(status),
+            updated_at=now,
+        )
+        probe._update_prediction(now)
         return self._publish(tracker)
 
-    def clear_prediction(self, serial_number: int) -> list[Device]:
-        """Invalidate a probe's prediction when its status connection is lost."""
+    def clear_prediction(self, serial_number: int, *, source: object | None = None) -> list[Device]:
+        """Invalidate the prediction from ``source`` when its status connection is lost.
+
+        If another source has reported the probe recently, its prediction is used instead.
+        """
         probe = self._probes[serial_number]
+        now = self._clock()
         tracker = _ChangeTracker()
         tracker.watch(probe)
-        probe.prediction = None
-        probe.prediction_updated_at = None
-        probe._prediction_seconds = None
+        probe._prediction_feeds.pop(_HOST_SOURCE if source is None else source, None)
+        probe._update_prediction(now)
         return self._publish(tracker)
 
     def _handle_probe_advertisement(
