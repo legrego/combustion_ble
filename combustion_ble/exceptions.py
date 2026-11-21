@@ -2,6 +2,14 @@ class CombustionError(Exception):
     """Base Combustion Error."""
 
 
+class RequestRejectedError(CombustionError):
+    """A device acknowledged a request but reported that it failed."""
+
+
+class PredictionCommandRejectedError(RequestRejectedError):
+    """A probe or MeatNet node acknowledged a prediction command but rejected it."""
+
+
 class CharacteristicMissingError(CombustionError):
     """Raised when a characteristic is missing."""
 

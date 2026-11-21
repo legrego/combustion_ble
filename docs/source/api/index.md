@@ -18,6 +18,9 @@ MeatNet
 
 .. autoclass:: combustion_ble.ProbeRoute
     :members:
+
+.. autoclass:: combustion_ble.FirmwareVersion
+    :members:
 ```
 
 Advertisements
@@ -41,8 +44,8 @@ Advertisements
     :members:
 ```
 
-Host-managed predictions
-------------------------
+Host-managed sessions
+---------------------
 ```{eval-rst}
 .. autoclass:: combustion_ble.ProbeSession
     :members:
@@ -77,6 +80,10 @@ Host-managed predictions
 
 .. autoclass:: combustion_ble.Serving
     :members:
+
+.. autoexception:: combustion_ble.CombustionError
+
+.. autoexception:: combustion_ble.RequestRejectedError
 
 .. autoexception:: combustion_ble.PredictionCommandRejectedError
 ```

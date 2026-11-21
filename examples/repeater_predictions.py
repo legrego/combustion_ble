@@ -4,11 +4,15 @@ Scans for Combustion devices, connects to the best repeater (a Display, Booster,
 Gauge, or Engine), and shows the predictions it relays for every probe. It keeps scanning while
 connected, because NodeSession only reports probes MeatNet has discovered through advertisements.
 
+It also reads firmware and hardware revisions for the repeater and every probe it relays, and can
+set or cancel a removal target on every relayed probe, to check requests sent through the repeater.
+
 The raw UART counters help tell connectivity problems apart: no notifications means the
 subscription isn't delivering data; notifications without predictions means the data isn't being
 parsed as relayed probe status.
 
 Run with: python -m examples.repeater_predictions [--address ADDRESS] [--duration SECONDS]
+    [--target CELSIUS | --cancel]
 
 Inside Home Assistant, the host owns scanning and connections; see the README instead.
 """
@@ -19,7 +23,7 @@ import argparse
 import asyncio
 import logging
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from signal import SIGINT, SIGTERM
 from typing import Any
 
@@ -71,6 +75,9 @@ class CountingClient:
     async def write_gatt_char(self, char_specifier, data, response=True) -> None:
         await self._client.write_gatt_char(char_specifier, data, response=response)
 
+    async def read_gatt_char(self, char_specifier: str) -> bytearray:
+        return await self._client.read_gatt_char(char_specifier)
+
 
 def _node_name(node: Node) -> str:
     name = node.product_type.name.replace("_", " ").title()
@@ -111,6 +118,7 @@ def build_table(
     )
     for column in (
         "Probe",
+        "Firmware",
         "Hops to node",
         "Statuses",
         "Age",
@@ -133,6 +141,7 @@ def build_table(
         )
         row = [
             f"{probe.serial_number_string} (ID {probe.probe_id.value + 1})",
+            str(probe.firmware_version or "-"),
             "-" if route is None else str(route.hop_count),
             str(status_counts.get(probe.serial_number, 0)),
             age,
@@ -154,8 +163,45 @@ def build_table(
             ]
         table.add_row(*row)
     if not meatnet.probes:
-        table.add_row("no probes discovered yet", *[""] * 9)
+        table.add_row("no probes discovered yet", *[""] * 10)
     return table
+
+
+async def _attempt(description: str, request: Awaitable[None], timeout: float = 35) -> bool:
+    try:
+        async with asyncio.timeout(timeout):
+            await request
+    except Exception as exc:
+        console.print(f"  [red]{description} failed:[/] {exc!r}")
+        return False
+    console.print(f"  [green]{description}[/]")
+    return True
+
+
+async def exercise_requests(
+    meatnet: MeatNet, node: Node, session: NodeSession, args: argparse.Namespace
+) -> None:
+    """Read revisions for the repeater and its probes, then optionally set or cancel targets."""
+    if await _attempt("Read repeater revisions", session.read_device_information()):
+        console.print(f"    firmware {node.firmware_version}, hardware {node.hardware_revision}")
+    for serial_number in list(node.relayed_probes):
+        probe = meatnet.probes[serial_number]
+        name = probe.serial_number_string
+        if await _attempt(
+            f"Read probe {name} revisions", session.read_probe_information(serial_number)
+        ):
+            console.print(
+                f"    firmware {probe.firmware_version}, hardware {probe.hardware_revision}"
+            )
+        if args.target is not None:
+            await _attempt(
+                f"Set probe {name} removal target to {args.target}°C",
+                session.set_removal_temperature(serial_number, args.target),
+            )
+        elif args.cancel:
+            await _attempt(
+                f"Cancel probe {name} prediction", session.cancel_prediction(serial_number)
+            )
 
 
 async def main(args: argparse.Namespace, stop: asyncio.Event) -> bool:
@@ -222,6 +268,7 @@ async def main(args: argparse.Namespace, stop: asyncio.Event) -> bool:
             async with asyncio.timeout(30):
                 await session.start()
             console.print("Subscribed to the repeater's UART notifications.")
+            await exercise_requests(meatnet, node, session, args)
 
             with Live(
                 build_table(meatnet, node, client, status_counts, started), console=console
@@ -286,6 +333,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--scan-seconds", type=float, default=10.0, help="Initial scan length")
     parser.add_argument(
         "--duration", type=float, default=0, help="Seconds to stay connected (default: until ^C)"
+    )
+    commands = parser.add_mutually_exclusive_group()
+    commands.add_argument(
+        "--target", type=float, help="Set this removal target (Celsius) on every relayed probe"
+    )
+    commands.add_argument(
+        "--cancel", action="store_true", help="Cancel the prediction on every relayed probe"
     )
     parser.add_argument("--verbose", action="store_true", help="Show combustion_ble debug logs")
     return parser.parse_args()

@@ -74,6 +74,8 @@ class FakeClient:
         self.fail_start: str | None = None
         self.fail_stop: str | None = None
         self.fail_write = False
+        self.gatt: dict[str, bytes] = {}
+        self.reads: list[str] = []
 
     async def start_notify(self, char_specifier, callback):
         self.callbacks[char_specifier] = callback
@@ -94,6 +96,10 @@ class FakeClient:
             raise OSError("write failed")
         if self.reply is not None:
             self.emit(UART_TX_CHARACTERISTIC, self.reply)
+
+    async def read_gatt_char(self, char_specifier):
+        self.reads.append(char_specifier)
+        return bytearray(self.gatt[char_specifier])
 
     def emit(self, characteristic: str, data: bytes) -> None:
         self.callbacks[characteristic](None, bytearray(data))

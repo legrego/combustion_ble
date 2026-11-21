@@ -18,7 +18,7 @@ from combustion_ble.const import (
     UART_RX_CHARACTERISTIC,
     UART_TX_CHARACTERISTIC,
 )
-from combustion_ble.exceptions import CombustionError
+from combustion_ble.exceptions import PredictionCommandRejectedError
 from combustion_ble.host_session import GattClient, HostSession, NotificationCallback
 from combustion_ble.logger import LOGGER
 from combustion_ble.meatnet import MeatNet
@@ -26,9 +26,7 @@ from combustion_ble.uart.message_type import MessageType
 from combustion_ble.uart.set_prediction import SetPredictionRequest
 from combustion_ble.utilities.crc16ccitt import crc16ccitt
 
-
-class PredictionCommandRejectedError(CombustionError):
-    """The probe acknowledged a prediction command but rejected it."""
+__all__ = ["PredictionCommandRejectedError", "ProbeSession"]
 
 
 class ProbeSession(HostSession):
@@ -52,9 +50,8 @@ class ProbeSession(HostSession):
     ) -> None:
         if not math.isfinite(command_timeout) or command_timeout <= 0:
             raise ValueError("Command timeout must be finite and positive")
-        super().__init__(client)
-        self._meatnet = meatnet
         self._probe = meatnet.probes[serial_number]
+        super().__init__(meatnet, self._probe, client)
         self._command_timeout = command_timeout
         self._command_lock = asyncio.Lock()
         self._pending: asyncio.Future[bool] | None = None
