@@ -360,9 +360,9 @@ def test_start_cancellation_propagates_when_cleanup_stalls(phase, interrupt):
         if phase == "failure_cleanup":
             client.fail_start = DEVICE_STATUS_CHARACTERISTIC
         session = ProbeSession(meatnet, SERIAL, client)
-        # Cancellation must also clear an existing prediction.
+        # Cancellation must also clear a prediction the session already supplied.
         meatnet.handle_prediction_status(
-            SERIAL, PredictionStatus.from_bytes(status_payload()[23:30])
+            SERIAL, PredictionStatus.from_bytes(status_payload()[23:30]), source=session
         )
 
         async def start():

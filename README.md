@@ -17,7 +17,8 @@ Giant Grill Gauges report their temperature, alarms, and battery status. Display
 
 Cooking predictions and target-temperature controls are available through an optional
 `ProbeSession`, using an already-connected Bluetooth client supplied by your application.
-The passive core still performs no Bluetooth I/O.
+`NodeSession` reads predictions for every probe on a MeatNet network through one connection to a
+repeater. The passive core still performs no Bluetooth I/O.
 
 ## Usage
 
@@ -79,7 +80,8 @@ See [`examples/passive_meatnet.py`](examples/passive_meatnet.py) for a live tabl
 First discover the probe through advertisements, then pass a connected `bleak.BleakClient`
 for that **direct probe** to `ProbeSession`. The session subscribes to status notifications
 and command responses. It never scans, connects, reconnects, or disconnects the client.
-MeatNet repeater connections are not supported by this API yet.
+To read predictions through a MeatNet repeater instead, see
+[Predictions through a MeatNet repeater](#predictions-through-a-meatnet-repeater).
 
 ```python
 from combustion_ble import ProbeSession
@@ -201,9 +203,62 @@ adapter or proxy and occupy a connection slot while subscribed.
 See [HA's Bluetooth guidance](https://contributors.home-assistant.io/core/integrations/bluetooth/)
 and [Combustion's probe protocol](https://github.com/combustion-inc/combustion-documentation/blob/main/probe_ble_specification.rst).
 
+### Predictions through a MeatNet repeater
+
+A Display, Booster, Giant Grill Gauge, or Engine relays the status of every probe on its MeatNet
+network, including predictions, as UART notifications. `NodeSession` subscribes to them through
+one connection to the repeater, so a single connection slot covers every probe, including probes
+out of the host's direct range. It is read-only: target-temperature commands still need a
+`ProbeSession`.
+
+```python
+from combustion_ble import NodeSession
+
+session = NodeSession(meatnet, node.address, connected_client)  # node from meatnet.nodes
+try:
+    await session.start()
+    # meatnet.probes[serial_number].prediction now updates for every relayed probe.
+finally:
+    await session.stop()
+```
+
+The lifecycle matches `ProbeSession`: call `session.disconnected()` from the client's disconnect
+callback, bound `start()` and `stop()` with your own timeouts, and release the client yourself.
+The HA setup above applies with `node.address` in place of the probe's address. Only one session
+per repeater is allowed, and predictions are applied only to probes already discovered through
+advertisements.
+
+When several sessions report the same probe, `probe.prediction` follows the direct
+`ProbeSession`, then the repeater with the fewest hops to the probe, like Combustion's apps. If
+that source disconnects, the next best one takes over immediately; if it goes quiet for 12
+seconds, another source that is still reporting replaces it. Repeaters relay each probe's status
+about every 5 seconds, while a direct connection reports about once a second.
+
+#### Choosing connections
+
+`plan_connections()` applies Combustion's rules for which connections are worth holding, so the
+host doesn't have to. It performs no I/O; call it from the same tick that calls `meatnet.expire()`,
+then act on the result with your own connection code:
+
+```python
+from combustion_ble import plan_connections
+
+plan = plan_connections(meatnet, repeater=running_node_session, failed=failed_addresses)
+plan.repeaters  # With no repeater session running: addresses to try, best first.
+plan.direct     # Probes heard directly that the repeater isn't reporting.
+plan.release    # Probes the repeater reports: close their direct connections.
+```
+
+Repeaters are ranked like Combustion's apps: ones relaying probes first, then the strongest
+signal. Pass the addresses of repeaters whose last attempt failed as `failed` to try them last.
+Try `plan.repeaters` in order and stop at the first one a connection-capable adapter can reach.
+A probe can briefly have both connections, until the repeater relays its first status.
+
+See [Combustion's MeatNet node protocol](https://github.com/combustion-inc/combustion-documentation/blob/main/meatnet_node_ble_specification.rst).
+
 ### Legacy `DeviceManager`
 
-The original `DeviceManager` API is still available. It runs its own scanner and maintains its own connections, so it is not suitable for Home Assistant. Use `MeatNet` and the optional host-managed `ProbeSession` for new integrations.
+The original `DeviceManager` API is still available. It runs its own scanner and maintains its own connections, so it is not suitable for Home Assistant. Use `MeatNet` and the optional host-managed `ProbeSession` and `NodeSession` for new integrations.
 
 ## Documentation
 

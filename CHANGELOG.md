@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Add `NodeSession`, which reads cooking predictions for every probe on a MeatNet network through one host-owned connection to a Display, Booster, Giant Grill Gauge, or Engine. It understands relayed probe status from node firmware with and without food safe data.
+- Add `plan_connections()`, which applies Combustion's rules for prediction connections without performing any I/O: which repeaters to try, best first; which probes need a direct connection; and which direct connections a running repeater session makes redundant. Hosts keep owning connections, retries, and cleanup.
+- When a direct probe connection and one or more repeaters report the same probe, `Probe.prediction` follows the direct connection, then the repeater with the fewest hops. Losing a source falls back to the next best one without clearing the prediction.
+- `MeatNet.handle_prediction_status()` and `MeatNet.clear_prediction()` accept a `source`, and `handle_prediction_status()` a `hop_count`. Clearing a prediction now removes only that source's data.
+- Add `examples/repeater_predictions.py`, which connects to the best repeater in range and reports whether relayed predictions arrive.
+
 ## [v0.5.0](https://github.com/legrego/combustion_ble/releases/tag/v0.5.0) - 2026-11-20
 
 - Add direct-probe `ProbeSession` support using an already-connected, host-owned Bleak client, compatible with Home Assistant's Bluetooth connection management. Sessions receive cooking predictions and support acknowledged removal-target and cancel commands without scanning or managing connections.
