@@ -30,7 +30,13 @@ ADDRESS = "AA:BB:CC:DD:EE:FF"
 
 
 def status_payload(
-    *, state: int = 3, mode: int = 1, type_: int = 1, seconds: int = 600, core: float = 40.0
+    *,
+    state: int = 3,
+    mode: int = 1,
+    type_: int = 1,
+    seconds: int = 600,
+    core: float = 40.0,
+    food_safe: bytes = b"",
 ) -> bytes:
     # Protocol field positions, independently packed from the production parser.
     prediction = (
@@ -47,6 +53,7 @@ def status_payload(
         + encode_probe_temperatures([25.0] * 8)
         + bytes(2)
         + prediction.to_bytes(7, "little")
+        + food_safe
     )
 
 

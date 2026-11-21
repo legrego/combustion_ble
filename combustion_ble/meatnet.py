@@ -44,6 +44,7 @@ from combustion_ble.ble_data.virtual_sensors import (
     VirtualCoreSensor,
     VirtualSurfaceSensor,
 )
+from combustion_ble.food_safe import FoodSafe
 from combustion_ble.instant_read_filter import InstantReadFilter
 from combustion_ble.logger import LOGGER
 from combustion_ble.prediction.cooking_prediction import CookingPrediction
@@ -111,12 +112,13 @@ class ProbeRoute:
 
 @dataclass(frozen=True, slots=True)
 class _PredictionFeed:
-    """The latest prediction from one connected source (a direct probe or MeatNet node session)."""
+    """The latest status from one connected source (a direct probe or MeatNet node session)."""
 
     rank: int
     """0 for status read directly from the probe, otherwise the MeatNet hop count."""
 
     prediction: CookingPrediction
+    food_safe: FoodSafe | None
     updated_at: float
 
 
@@ -179,6 +181,10 @@ class Probe(Device):
         """Latest connected prediction, or ``None`` when unknown, stale, or disconnected."""
         self.prediction_updated_at: float | None = None
         """Monotonic clock time of the status behind :attr:`prediction`."""
+        self.food_safe: FoodSafe | None = None
+        """Latest SafeCook program and progress, from the same connected status as
+        :attr:`prediction`. ``None`` when unknown, stale, disconnected, or not reported by the
+        probe's firmware."""
         self._prediction_feeds: dict[object, _PredictionFeed] = {}
         self._prediction_source: object | None = None
         self._prediction_session: object | None = None
@@ -283,6 +289,7 @@ class Probe(Device):
             self.available,
             self.mode,
             self.prediction,
+            self.food_safe,
             self.probe_id,
             self.color,
             self.battery_status,
@@ -419,6 +426,7 @@ class Probe(Device):
             self._prediction_source = None
             self.prediction = None
             self.prediction_updated_at = None
+            self.food_safe = None
             return
 
         def live(feed: _PredictionFeed) -> bool:
@@ -443,6 +451,7 @@ class Probe(Device):
             )
         self.prediction = prediction
         self.prediction_updated_at = feed.updated_at
+        self.food_safe = feed.food_safe
 
     def _expire(self, now: float, stale_timeout: float) -> None:
         if self._prediction_feeds:
@@ -716,10 +725,14 @@ class MeatNet:
         serial_number: int,
         status: PredictionStatus,
         *,
+        food_safe: FoodSafe | None = None,
         source: object | None = None,
         hop_count: int | None = None,
     ) -> list[Device]:
         """Apply connected prediction data to an already discovered probe.
+
+        :param food_safe: SafeCook data from the same status, when the probe's firmware reports
+            it. :attr:`Probe.food_safe` follows the same source as :attr:`Probe.prediction`.
 
         :param source: Identifies the connection the status arrived on, such as the session
             object, so that several connections can report the same probe. ``None`` is a single
@@ -738,13 +751,14 @@ class MeatNet:
         probe._prediction_feeds[_HOST_SOURCE if source is None else source] = _PredictionFeed(
             rank=0 if hop_count is None else hop_count,
             prediction=CookingPrediction.from_status(status),
+            food_safe=food_safe,
             updated_at=now,
         )
         probe._update_prediction(now)
         return self._publish(tracker)
 
     def clear_prediction(self, serial_number: int, *, source: object | None = None) -> list[Device]:
-        """Invalidate the prediction from ``source`` when its status connection is lost.
+        """Invalidate the prediction and SafeCook data from ``source`` when its connection is lost.
 
         If another source has reported the probe recently, its prediction is used instead.
         """

@@ -27,7 +27,8 @@ _RESPONSE_FLAG = 0x80
 # the original 30-byte probe status. Firmware that predates food safe data follows that with the
 # network information byte; current firmware puts food safe data (18 bytes) in between.
 _SERIAL = slice(0, 4)
-_PROBE_STATUS = slice(4, 34)
+_LEGACY_PROBE_STATUS = slice(4, 34)
+_PROBE_STATUS = slice(4, 52)
 _LEGACY_PAYLOAD_LENGTH = 35
 _LEGACY_NETWORK_INFO_INDEX = 34
 _NETWORK_INFO_INDEX = 52
@@ -113,8 +114,10 @@ class NodeSession(HostSession):
     def _handle_probe_status(self, payload: bytes) -> None:
         if len(payload) == _LEGACY_PAYLOAD_LENGTH:
             network_info = payload[_LEGACY_NETWORK_INFO_INDEX]
+            status_bytes = payload[_LEGACY_PROBE_STATUS]
         elif len(payload) > _NETWORK_INFO_INDEX:
             network_info = payload[_NETWORK_INFO_INDEX]
+            status_bytes = payload[_PROBE_STATUS]
         else:
             LOGGER.debug("Ignoring relayed probe status with %d byte payload", len(payload))
             return
@@ -125,7 +128,7 @@ class NodeSession(HostSession):
             LOGGER.debug("Ignoring relayed status for undiscovered probe %08X", serial_number)
             return
         try:
-            status = ProbeStatus.from_data(payload[_PROBE_STATUS])
+            status = ProbeStatus.from_data(status_bytes)
         except ValueError, IndexError:
             LOGGER.debug("Ignoring malformed relayed probe status")
             return
@@ -135,6 +138,7 @@ class NodeSession(HostSession):
         self._meatnet.handle_prediction_status(
             serial_number,
             status.prediction_status,
+            food_safe=status.food_safe,
             source=self,
             hop_count=HopCount.from_network_info_byte(network_info).value + 1,
         )

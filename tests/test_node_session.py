@@ -19,7 +19,12 @@ OTHER_NODE_ADDRESS = "11:22:33:44:55:77"
 
 
 def node_status_frame(
-    serial_number: int = SERIAL, *, hop: int = 0, legacy: bool = False, **status
+    serial_number: int = SERIAL,
+    *,
+    hop: int = 0,
+    legacy: bool = False,
+    food_safe: bytes = bytes(18),
+    **status,
 ) -> bytes:
     """Build a Probe Status (0x45) request frame, packed independently from the parser."""
     payload = serial_number.to_bytes(4, "little") + status_payload(**status)
@@ -29,7 +34,7 @@ def node_status_frame(
     else:
         # Food safe data and status, network info, overheating, preferences, high and low alarm
         # arrays, session ID, and sample period.
-        payload += bytes(18) + network_info + bytes(1 + 1 + 22 + 22 + 4 + 2)
+        payload += food_safe + network_info + bytes(1 + 1 + 22 + 22 + 4 + 2)
         assert len(payload) == 105
     body = b"\x45" + (0xDEADBEEF).to_bytes(4, "little") + bytes([len(payload)]) + payload
     return b"\xca\xfe" + crc16ccitt(body).to_bytes(2, "little") + body

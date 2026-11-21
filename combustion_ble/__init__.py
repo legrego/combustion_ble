@@ -32,6 +32,13 @@ from combustion_ble.ble_data import (
     ProbeMode,
     ProbeTemperatures,
 )
+from combustion_ble.ble_data.food_safe_data import (
+    FoodSafeMode,
+    IntegratedProduct,
+    Serving,
+    SimplifiedProduct,
+)
+from combustion_ble.ble_data.food_safe_state import FoodSafeState
 from combustion_ble.ble_data.hop_count import HopCount
 from combustion_ble.ble_data.virtual_sensors import (
     VirtualAmbientSensor,
@@ -39,6 +46,7 @@ from combustion_ble.ble_data.virtual_sensors import (
     VirtualSurfaceSensor,
 )
 from combustion_ble.connection_plan import ConnectionPlan, plan_connections
+from combustion_ble.food_safe import FoodSafe
 from combustion_ble.meatnet import Device, Gauge, MeatNet, Node, Probe, ProbeRoute
 from combustion_ble.node_session import NodeSession
 from combustion_ble.prediction.cooking_prediction import CookingPrediction
@@ -76,9 +84,13 @@ __all__ = [
     "CookingPrediction",
     "Device",
     "DeviceManager",
+    "FoodSafe",
+    "FoodSafeMode",
+    "FoodSafeState",
     "Gauge",
     "GaugeAdvertisement",
     "HopCount",
+    "IntegratedProduct",
     "MeatNet",
     "Node",
     "NodeAdvertisement",
@@ -97,6 +109,8 @@ __all__ = [
     "ProbeRoute",
     "ProbeSession",
     "ProbeTemperatures",
+    "Serving",
+    "SimplifiedProduct",
     "ThermometerPreferences",
     "VirtualAmbientSensor",
     "VirtualCoreSensor",
