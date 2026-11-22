@@ -18,8 +18,8 @@ The workflow must be merged into the default branch before GitHub shows the
 
 1. Update `combustion_ble/version.py` and review the unreleased changelog.
 2. Run `make run-checks`, build with `python -m build`, and validate with
-   `twine check --strict dist/*` in a clean Python 3.14.2+ environment with
-   `.[dev]` installed.
+   `twine check --strict dist/*` in a clean Python 3.14.2+ environment set up
+   with `pip install --group dev -e .`.
 3. Move the unreleased changelog entries into a dated release section (for
    example `## [v0.4.0](https://github.com/legrego/combustion_ble/releases/tag/v0.4.0) - 2026-11-20`),
    then commit and push the release preparation to `main`. No tag is needed yet.

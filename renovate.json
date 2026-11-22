@@ -1,0 +1,18 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended"
+  ],
+  "packageRules": [
+    {
+      "description": "Home Assistant installs this library under its own package_constraints.txt, so the bleak range must keep admitting the version Home Assistant pins. Change it only on request from the Dependency Dashboard.",
+      "matchPackageNames": [
+        "bleak"
+      ],
+      "dependencyDashboardApproval": true,
+      "prBodyNotes": [
+        "Before merging, check that this range still admits the `bleak` pin in Home Assistant's `homeassistant/package_constraints.txt` for every Home Assistant release the integration supports."
+      ]
+    }
+  ]
+}

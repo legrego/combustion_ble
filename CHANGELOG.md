@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- **Breaking:** remove the `dev` extra. The development tools are now PEP 735 dependency groups, which aren't part of the published package; install them from a clone with `pip install --group dev -e .`.
+
 ## [v0.9.0](https://github.com/legrego/combustion_ble/releases/tag/v0.9.0) - 2026-11-21
 
 - Add firmware and hardware revisions. `Device.firmware_version` is a `FirmwareVersion`, which keeps the reported string and parses `vMAJOR.MINOR.PATCH[-COMMIT-SHA]` for comparisons, which ignore the git SHA and build variant, as Combustion's Android SDK does; `Device.hardware_revision` is a string. Both are `None` until read through a session, notify listeners when they change, and keep their last value after the session closes.
