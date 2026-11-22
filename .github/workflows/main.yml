@@ -129,12 +129,22 @@ jobs:
 
       - name: Pytest coverage comment
         # Pull requests from forks get a read-only token, so only comment on branches in this repository.
-        if: matrix.task.name == 'Test' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        # Also comment when tests fail or coverage drops below the floor, so the comment never shows a
+        # stale passing report, as long as pytest got far enough to write its reports.
+        if: >-
+          !cancelled()
+          && matrix.task.name == 'Test'
+          && github.event_name == 'pull_request'
+          && github.event.pull_request.head.repo.full_name == github.repository
+          && hashFiles('test_results/cov_xml/coverage.xml') != ''
+          && hashFiles('test_results/pytest.xml') != ''
         uses: MishaKav/pytest-coverage-comment@v1
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           pytest-xml-coverage-path: ./test_results/cov_xml/coverage.xml
           junitxml-path: ./test_results/pytest.xml
+          # coverage.xml paths are relative to the combustion_ble source directory.
+          coverage-path-prefix: combustion_ble/
 
       - name: Upload package distribution files
         if: matrix.task.name == 'Build'
