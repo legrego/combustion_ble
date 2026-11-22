@@ -8,6 +8,8 @@ class NodeMessageType(Enum):
     LOG = 4
     SET_PREDICTION = 5
     READ_OVER_TEMPERATURE = 6
+    CONFIGURE_FOOD_SAFE = 7
+    RESET_FOOD_SAFE = 8
 
     CONNECTED = 0x40
     DISCONNECTED = 0x41

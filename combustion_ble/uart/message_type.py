@@ -5,3 +5,5 @@ class MessageType:
     LOG = 4
     SET_PREDICTION = 5
     READ_OVER_TEMPERATURE = 6
+    CONFIGURE_FOOD_SAFE = 7
+    RESET_FOOD_SAFE = 8
