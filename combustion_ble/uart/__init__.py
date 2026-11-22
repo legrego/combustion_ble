@@ -1,5 +1,6 @@
 """UART"""
 
+from .configure_food_safe import ConfigureFoodSafeRequest, ConfigureFoodSafeResponse
 from .log_request import LogRequest
 from .log_response import LogResponse
 from .message_type import MessageType
@@ -8,6 +9,7 @@ from .read_over_temperature import (
     ReadOverTemperatureResponse,
 )
 from .request import Request
+from .reset_food_safe import ResetFoodSafeRequest, ResetFoodSafeResponse
 from .response import Response
 from .response_from_data import responses_from_data
 from .session_info import SessionInfoRequest, SessionInfoResponse, SessionInformation
@@ -16,6 +18,10 @@ from .set_id import SetIDRequest, SetIDResponse
 from .set_prediction import SetPredictionRequest, SetPredictionResponse
 
 __all__ = [
+    "ConfigureFoodSafeRequest",
+    "ConfigureFoodSafeResponse",
+    "ResetFoodSafeRequest",
+    "ResetFoodSafeResponse",
     "LogRequest",
     "LogResponse",
     "MessageType",

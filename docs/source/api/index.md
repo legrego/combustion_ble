@@ -66,6 +66,9 @@ Host-managed sessions
 .. autoclass:: combustion_ble.FoodSafe
     :members:
 
+.. autoclass:: combustion_ble.FoodSafeProgram
+    :members:
+
 .. autoclass:: combustion_ble.FoodSafeState
     :members:
 

@@ -48,7 +48,7 @@ from combustion_ble.exceptions import (
     RequestRejectedError,
 )
 from combustion_ble.firmware_version import FirmwareVersion
-from combustion_ble.food_safe import FoodSafe
+from combustion_ble.food_safe import FoodSafe, FoodSafeProgram
 from combustion_ble.meatnet import Device, Gauge, MeatNet, Node, Probe, ProbeRoute
 from combustion_ble.node_session import NodeSession
 from combustion_ble.prediction.cooking_prediction import CookingPrediction
@@ -69,6 +69,7 @@ __all__ = [
     "Device",
     "FirmwareVersion",
     "FoodSafe",
+    "FoodSafeProgram",
     "FoodSafeMode",
     "FoodSafeState",
     "Gauge",

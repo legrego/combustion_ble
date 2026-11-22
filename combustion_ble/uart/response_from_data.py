@@ -1,9 +1,11 @@
 from typing import Optional
 
 from combustion_ble.logger import LOGGER
+from combustion_ble.uart.configure_food_safe import ConfigureFoodSafeResponse
 from combustion_ble.uart.log_response import LogResponse
 from combustion_ble.uart.message_type import MessageType
 from combustion_ble.uart.read_over_temperature import ReadOverTemperatureResponse
+from combustion_ble.uart.reset_food_safe import ResetFoodSafeResponse
 from combustion_ble.uart.response import Response
 from combustion_ble.uart.session_info import SessionInfoResponse
 from combustion_ble.uart.set_color import SetColorResponse
@@ -73,6 +75,10 @@ def response_from_data(data) -> Optional[Response]:
         return SessionInfoResponse.from_raw(data, success, int(payload_length))
     elif message_type == MessageType.SET_PREDICTION:
         return SetPredictionResponse(success, int(payload_length))
+    elif message_type == MessageType.CONFIGURE_FOOD_SAFE:
+        return ConfigureFoodSafeResponse(success, int(payload_length))
+    elif message_type == MessageType.RESET_FOOD_SAFE:
+        return ResetFoodSafeResponse(success, int(payload_length))
     elif message_type == MessageType.READ_OVER_TEMPERATURE:
         return ReadOverTemperatureResponse(data, success, int(payload_length))
     else:
