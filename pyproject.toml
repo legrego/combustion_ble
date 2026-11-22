@@ -102,6 +102,7 @@ exclude = '''
     | \.venv
     | \bdist\b
     | \bdoc\b
+    | /build/
 )
 '''
 
@@ -125,6 +126,9 @@ select = ["E4", "E7", "E9", "F"]
 "__init__.py" = ["F401"]
 
 [tool.mypy]
+# `pip install .` and `python -m build --wheel` leave a copy of the package in build/lib,
+# which mypy would otherwise report as a duplicate module.
+exclude = ["^build/", "^dist/"]
 ignore_missing_imports = true
 no_site_packages = true
 check_untyped_defs = true
