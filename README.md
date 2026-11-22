@@ -263,6 +263,51 @@ signal. Pass the addresses of repeaters whose last attempt failed as `failed` to
 Try `plan.repeaters` in order and stop at the first one a connection-capable adapter can reach.
 A probe can briefly have both connections, until the repeater relays its first status.
 
+### Configuring SafeCook
+
+Both session types can configure SafeCook, clear its program, or reset its progress. Pass a
+`FoodSafeProgram` containing your selected program's parameters; the library does not supply
+product presets or calculate safety targets. For example, using caller-supplied parameter values:
+
+```python
+from combustion_ble import FoodSafeMode, FoodSafeProgram, IntegratedProduct, Serving
+
+program = FoodSafeProgram(
+    mode=FoodSafeMode.INTEGRATED,
+    product=IntegratedProduct.CUSTOM,
+    serving=Serving.SERVED_IMMEDIATELY,
+    threshold_temperature=threshold_celsius,
+    z_value=z_celsius,
+    reference_temperature=reference_celsius,
+    d_value=d_value,
+    target_log_reduction=target_log_reduction,
+)
+await probe_session.configure_food_safe(program)
+await node_session.configure_food_safe(serial_number, program)
+
+await probe_session.reset_food_safe()  # Reset progress, keeping the program.
+await node_session.reset_food_safe(serial_number)
+await probe_session.clear_food_safe()  # Turn SafeCook off with an all-zero program.
+await node_session.clear_food_safe(serial_number)
+```
+
+For Simplified mode, use `FoodSafeMode.SIMPLIFIED` and a `SimplifiedProduct`. The product enum
+must match the mode. Reserved and deprecated choices are rejected when encoding a command;
+reading status continues to preserve unknown values. Numeric fields must be finite: threshold,
+Z-value, reference temperature, and D-value accept 0–409.55 and round to 0.05 steps; target log
+reduction accepts 0–25.5 and rounds to 0.1. Temperature values are Celsius. Validation checks
+the protocol representation, not whether the parameters are appropriate for a particular food.
+
+All commands await acknowledgement and raise `RequestRejectedError` if the device rejects them.
+A timeout, cancellation, or write failure closes a direct probe session; node sessions remain
+usable after individual request failures. An acknowledgement does not update `probe.food_safe`:
+subsequent status reports confirm the program and progress. These commands require firmware
+that supports SafeCook. Resetting progress preserves the parameters and may immediately report
+Safe again if the configured conditions are already met.
+
+The payloads follow Combustion's [probe protocol](https://github.com/combustion-inc/combustion-documentation/blob/main/probe_ble_specification.rst#configure-food-safe-0x07)
+and [MeatNet node protocol](https://github.com/combustion-inc/combustion-documentation/blob/main/meatnet_node_ble_specification.rst#configure-food-safe-0x07).
+
 ### Firmware and hardware revisions
 
 Advertisements don't carry firmware versions, so they are read through a session and stored on the

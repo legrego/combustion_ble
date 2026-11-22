@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [v0.10.0](https://github.com/legrego/combustion_ble/releases/tag/v0.10.0) - 2026-11-22
+
+- Add `FoodSafeProgram` and `configure_food_safe()`, `clear_food_safe()`, and `reset_food_safe()` on both `ProbeSession` and `NodeSession`. Configure validates supported mode/product/serving choices and finite numeric protocol ranges before writing. Clear turns SafeCook off; reset preserves the program while resetting progress. Commands await acknowledgement, raise `RequestRejectedError` on rejection, and leave reported SafeCook state to subsequent status updates.
+
 ## [v0.9.0](https://github.com/legrego/combustion_ble/releases/tag/v0.9.0) - 2026-11-21
 
 - Add firmware and hardware revisions. `Device.firmware_version` is a `FirmwareVersion`, which keeps the reported string and parses `vMAJOR.MINOR.PATCH[-COMMIT-SHA]` for comparisons, which ignore the git SHA and build variant, as Combustion's Android SDK does; `Device.hardware_revision` is a string. Both are `None` until read through a session, notify listeners when they change, and keep their last value after the session closes.

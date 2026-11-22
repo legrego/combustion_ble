@@ -21,6 +21,7 @@ from combustion_ble.exceptions import (
     PredictionCommandRejectedError,
     RequestRejectedError,
 )
+from combustion_ble.food_safe import FoodSafeProgram
 from combustion_ble.host_session import (
     GattClient,
     HostSession,
@@ -180,6 +181,11 @@ class NodeSession(HostSession):
         pending = self._pending.get(frame[_REQUEST_ID])
         if pending is None or pending[0] != message_type or pending[1].done():
             return
+        if message_type in (
+            NodeMessageType.CONFIGURE_FOOD_SAFE.value,
+            NodeMessageType.RESET_FOOD_SAFE.value,
+        ) and (frame[_SUCCESS_INDEX] not in (0, 1) or len(frame) != _RESPONSE_HEADER_LENGTH):
+            return
         pending[1].set_result(
             _Response(bool(frame[_SUCCESS_INDEX]), frame[_RESPONSE_HEADER_LENGTH:])
         )
@@ -199,6 +205,32 @@ class NodeSession(HostSession):
     async def cancel_prediction(self, serial_number: int) -> None:
         """Disable prediction mode on a probe through the node and await acknowledgement."""
         await self._send_prediction(serial_number, 0.0, PredictionMode.NONE)
+
+    async def configure_food_safe(self, serial_number: int, program: FoodSafeProgram) -> None:
+        """Configure a probe's SafeCook program through the node and await acknowledgement.
+
+        Status remains authoritative. Raises ``ValueError`` for invalid parameters,
+        ``RequestRejectedError`` for rejection, ``TimeoutError`` for timeout, or
+        ``ConnectionError`` when closed. Failed requests leave the node session running.
+        """
+        await self._send_food_safe(
+            serial_number, NodeMessageType.CONFIGURE_FOOD_SAFE, program.to_bytes()
+        )
+
+    async def clear_food_safe(self, serial_number: int) -> None:
+        """Turn a probe's SafeCook off by writing an all-zero program; await acknowledgement."""
+        await self._send_food_safe(serial_number, NodeMessageType.CONFIGURE_FOOD_SAFE, bytes(10))
+
+    async def reset_food_safe(self, serial_number: int) -> None:
+        """Reset a probe's SafeCook progress, preserving its parameters; await acknowledgement."""
+        await self._send_food_safe(serial_number, NodeMessageType.RESET_FOOD_SAFE, b"")
+
+    async def _send_food_safe(
+        self, serial_number: int, message_type: NodeMessageType, payload: bytes
+    ) -> None:
+        response = await self._request(message_type, _encode_serial(serial_number) + payload)
+        if not response.success:
+            raise RequestRejectedError("Node rejected the SafeCook command")
 
     async def read_probe_information(self, serial_number: int) -> None:
         """Read a probe's firmware and hardware revisions through the node into ``meatnet``.

@@ -18,11 +18,18 @@ from combustion_ble.const import (
     UART_RX_CHARACTERISTIC,
     UART_TX_CHARACTERISTIC,
 )
-from combustion_ble.exceptions import PredictionCommandRejectedError
+from combustion_ble.exceptions import (
+    PredictionCommandRejectedError,
+    RequestRejectedError,
+)
+from combustion_ble.food_safe import FoodSafeProgram
 from combustion_ble.host_session import GattClient, HostSession, NotificationCallback
 from combustion_ble.logger import LOGGER
 from combustion_ble.meatnet import MeatNet
+from combustion_ble.uart.configure_food_safe import ConfigureFoodSafeRequest
 from combustion_ble.uart.message_type import MessageType
+from combustion_ble.uart.request import Request
+from combustion_ble.uart.reset_food_safe import ResetFoodSafeRequest
 from combustion_ble.uart.set_prediction import SetPredictionRequest
 from combustion_ble.utilities.crc16ccitt import crc16ccitt
 
@@ -30,7 +37,7 @@ __all__ = ["PredictionCommandRejectedError", "ProbeSession"]
 
 
 class ProbeSession(HostSession):
-    """Subscribe to a direct probe and control predictions through a host-owned client.
+    """Subscribe to a direct probe and control predictions and SafeCook through a host-owned client.
 
     Discover the probe in ``meatnet`` first. The caller must supply a client connected to that
     probe; use :class:`NodeSession` for a MeatNet repeater. Only one session per probe is allowed. The caller owns the client's
@@ -55,6 +62,7 @@ class ProbeSession(HostSession):
         self._command_timeout = command_timeout
         self._command_lock = asyncio.Lock()
         self._pending: asyncio.Future[bool] | None = None
+        self._pending_type: int | None = None
         self._uart_buffer = bytearray()
 
     def disconnected(self) -> None:
@@ -100,12 +108,37 @@ class ProbeSession(HostSession):
         await self._send_prediction(0.0, PredictionMode.NONE)
 
     async def _send_prediction(self, celsius: float, mode: PredictionMode) -> None:
-        request = SetPredictionRequest(celsius, mode)
+        if not await self._send_request(SetPredictionRequest(celsius, mode)):
+            raise PredictionCommandRejectedError("Probe rejected the prediction command")
+
+    async def configure_food_safe(self, program: FoodSafeProgram) -> None:
+        """Configure SafeCook and await acknowledgement; status confirms the resulting program.
+
+        Raises ``ValueError`` for invalid parameters, ``RequestRejectedError`` for a rejection,
+        ``TimeoutError`` for a timeout, or ``ConnectionError`` when closed. An uncertain command
+        outcome closes the session, as with prediction commands.
+        """
+        await self._send_food_safe(ConfigureFoodSafeRequest(program))
+
+    async def clear_food_safe(self) -> None:
+        """Turn SafeCook off by writing an all-zero program and await acknowledgement."""
+        await self._send_food_safe(Request(bytes(10), MessageType.CONFIGURE_FOOD_SAFE))
+
+    async def reset_food_safe(self) -> None:
+        """Reset SafeCook progress, preserving its parameters, and await acknowledgement."""
+        await self._send_food_safe(ResetFoodSafeRequest())
+
+    async def _send_food_safe(self, request: Request) -> None:
+        if not await self._send_request(request):
+            raise RequestRejectedError("Probe rejected the SafeCook command")
+
+    async def _send_request(self, request: Request) -> bool:
         async with self._command_lock:
             if not self._ready or not self._client.is_connected:
                 raise ConnectionError("Probe session is not running")
             future: asyncio.Future[bool] = asyncio.get_running_loop().create_future()
             self._pending = future
+            self._pending_type = request.data[4]
             # Closing the session fails ``future``, so racing the write against it lets a close
             # interrupt a stalled write, and release the lock for commands queued behind it.
             write = asyncio.ensure_future(
@@ -122,6 +155,7 @@ class ProbeSession(HostSession):
                 raise
             finally:
                 self._pending = None
+                self._pending_type = None
                 if not write.done():
                     write.cancel()
                 elif not write.cancelled():
@@ -130,8 +164,7 @@ class ProbeSession(HostSession):
                     future.cancel()
                 elif not future.cancelled():
                     future.exception()  # Consume disconnect errors even if the write failed first.
-            if not success:
-                raise PredictionCommandRejectedError("Probe rejected the prediction command")
+            return success
 
     def _handle_status(self, _sender: Any, data: bytearray) -> None:
         if not self._active:
@@ -167,7 +200,7 @@ class ProbeSession(HostSession):
                 continue
             del self._uart_buffer[:length]
             if (
-                frame[4] == MessageType.SET_PREDICTION
+                frame[4] == self._pending_type
                 and frame[5] in (0, 1)
                 and frame[6] == 0
                 and self._pending is not None
