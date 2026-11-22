@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- **Breaking:** remove the `dev` extra. The development tools are now PEP 735 dependency groups, which aren't part of the published package; install them from a clone with `pip install --group dev -e .`.
+
 ## [v0.10.0](https://github.com/legrego/combustion_ble/releases/tag/v0.10.0) - 2026-11-22
 
 - Add `FoodSafeProgram` and `configure_food_safe()`, `clear_food_safe()`, and `reset_food_safe()` on both `ProbeSession` and `NodeSession`. Configure validates supported mode/product/serving choices and finite numeric protocol ranges before writing. Clear turns SafeCook off; reset preserves the program while resetting progress. Commands await acknowledgement, raise `RequestRejectedError` on rejection, and leave reported SafeCook state to subsequent status updates.

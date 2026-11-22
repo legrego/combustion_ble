@@ -32,25 +32,42 @@ Repository = "https://github.com/legrego/combustion_ble"
 Changelog = "https://github.com/legrego/combustion_ble/blob/main/CHANGELOG.md"
 Documentation = "https://combustion_ble.readthedocs.io/"
 
-[project.optional-dependencies]
-dev = [
+# Development tools live in PEP 735 dependency groups, which stay out of the published
+# package metadata. Install them with `pip install --group dev -e .` (pip 25.1 or newer).
+[dependency-groups]
+lint = [
     "ruff==0.17.6",
     "mypy==2.4.1",
     "black==26.10.1",
     "isort==9.0.2",
+]
+test = [
     "pytest==9.2.0",
     "pytest-sphinx==0.7.1",
     "pytest-cov==7.1.0",
-    "twine==7.0.0",
-    "build==1.6.1",
+]
+docs = [
     "Sphinx==9.2.0",
     "furo==2025.12.19",
     "myst-parser==5.2.0",
     "sphinx-copybutton==0.5.2",
     "sphinx-autobuild==2025.8.25",
     "sphinx-autodoc-typehints==3.17.6",
+]
+release = [
+    "twine==7.0.0",
+    "build==1.6.1",
     "packaging==26.3",
+]
+examples = [
     "rich==15.0.0",
+]
+dev = [
+    {include-group = "lint"},
+    {include-group = "test"},
+    {include-group = "docs"},
+    {include-group = "release"},
+    {include-group = "examples"},
 ]
 
 [tool.setuptools.packages.find]
@@ -85,6 +102,7 @@ exclude = '''
     | \.venv
     | \bdist\b
     | \bdoc\b
+    | /build/
 )
 '''
 
@@ -108,6 +126,9 @@ select = ["E4", "E7", "E9", "F"]
 "__init__.py" = ["F401"]
 
 [tool.mypy]
+# `pip install .` and `python -m build --wheel` leave a copy of the package in build/lib,
+# which mypy would otherwise report as a duplicate module.
+exclude = ["^build/", "^dist/"]
 ignore_missing_imports = true
 no_site_packages = true
 check_untyped_defs = true
@@ -116,7 +137,28 @@ check_untyped_defs = true
 module = "tests.*"
 strict_optional = false
 
+[tool.coverage.run]
+source = ["combustion_ble"]
+branch = true
+
+[tool.coverage.html]
+directory = "test_results/cov_html"
+
+[tool.coverage.xml]
+output = "test_results/cov_xml/coverage.xml"
+
+[tool.coverage.json]
+output = "test_results/cov_json/coverage.json"
+
 [tool.pytest.ini_options]
+addopts = [
+    "--junitxml=test_results/pytest.xml",
+    "--cov",
+    "--cov-report=term-missing:skip-covered",
+    "--cov-report=xml",
+    "--cov-report=html",
+    "--cov-report=json",
+]
 testpaths = "tests/"
 python_classes = [
   "Test*",

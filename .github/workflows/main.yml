@@ -58,14 +58,19 @@ jobs:
     name: Python ${{ matrix.python }} - ${{ matrix.task.name }}
     runs-on: [ubuntu-latest]
     timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: write
     strategy:
       fail-fast: false
       matrix:
         python: ["3.14"]
         task:
           - name: Test
+            # Coverage is measured on every run (see pyproject.toml). The floor sits just
+            # under the current total so coverage cannot quietly regress; raise it as it grows.
             run: |
-              pytest -v --color=yes --doctest-modules tests/ combustion_ble/
+              pytest -v --color=yes --doctest-modules --cov-fail-under=87 tests/ combustion_ble/
 
         include:
           - python: "3.14"
@@ -122,6 +127,25 @@ jobs:
           . .venv/bin/activate
           ${{ matrix.task.run }}
 
+      - name: Pytest coverage comment
+        # Pull requests from forks get a read-only token, so only comment on branches in this repository.
+        # Also comment when tests fail or coverage drops below the floor, so the comment never shows a
+        # stale passing report, as long as pytest got far enough to write its reports.
+        if: >-
+          !cancelled()
+          && matrix.task.name == 'Test'
+          && github.event_name == 'pull_request'
+          && github.event.pull_request.head.repo.full_name == github.repository
+          && hashFiles('test_results/cov_xml/coverage.xml') != ''
+          && hashFiles('test_results/pytest.xml') != ''
+        uses: MishaKav/pytest-coverage-comment@v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pytest-xml-coverage-path: ./test_results/cov_xml/coverage.xml
+          junitxml-path: ./test_results/pytest.xml
+          # coverage.xml paths are relative to the combustion_ble source directory.
+          coverage-path-prefix: combustion_ble/
+
       - name: Upload package distribution files
         if: matrix.task.name == 'Build'
         uses: actions/upload-artifact@v7
@@ -129,10 +153,54 @@ jobs:
           name: package
           path: dist
 
+  ha-constraints:
+    needs: prepare
+    name: Home Assistant ${{ matrix.home-assistant }} constraints
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        # Home Assistant installs integration requirements with uv under the versions in its
+        # package_constraints.txt, so every dependency range here must admit those pins.
+        # Check the oldest release the integration supports (the homeassistant key in
+        # homeassistant-combustion's hacs.json) and the newest stable release.
+        home-assistant: ["2026.10.4", "latest"]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+
+      - name: Download Home Assistant's package constraints
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HA_VERSION: ${{ matrix.home-assistant }}
+        run: |
+          if [ "$HA_VERSION" = latest ]; then
+            HA_VERSION=$(gh api repos/home-assistant/core/releases/latest --jq .tag_name)
+          fi
+          echo "Checking against Home Assistant $HA_VERSION" | tee -a "$GITHUB_STEP_SUMMARY"
+          curl -fsSL -o "$RUNNER_TEMP/package_constraints.txt" \
+            "https://raw.githubusercontent.com/home-assistant/core/$HA_VERSION/homeassistant/package_constraints.txt"
+
+      - name: Install the uv version Home Assistant uses
+        run: python -m pip install "$(grep '^uv==' "$RUNNER_TEMP/package_constraints.txt")"
+
+      - name: Check that Home Assistant can install this library
+        run: |
+          uv venv
+          uv pip install --dry-run --constraint "$RUNNER_TEMP/package_constraints.txt" .
+
   release:
     name: ${{ inputs.publish && 'Publish release' || 'Release dry run' }}
     if: github.event_name == 'workflow_dispatch'
-    needs: [prepare, checks]
+    needs: [prepare, checks, ha-constraints]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
