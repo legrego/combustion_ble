@@ -292,13 +292,18 @@ await node_session.clear_food_safe(serial_number)
 ```
 
 For Simplified mode, use `FoodSafeMode.SIMPLIFIED` and a `SimplifiedProduct`. The product enum
-must match the mode. Reserved and deprecated choices are rejected when encoding a command;
-reading status continues to preserve unknown values. Numeric fields must be finite: threshold,
+must match the mode. Deprecated Integrated product IDs (3 and 5–12) are also accepted as integers
+so programs from older apps can be written back. Reserved choices are rejected; reading status
+continues to preserve unknown values. Numeric fields must be finite: threshold,
 Z-value, reference temperature, and D-value accept 0–409.55 and round to 0.05 steps; target log
-reduction accepts 0–25.5 and rounds to 0.1. Temperature values are Celsius. Validation checks
+reduction accepts 0–25.5 and rounds to 0.1. Exact halfway values round up. Invalid numeric inputs
+raise `ValueError`. Programs that become all zeros after rounding are rejected; use
+`clear_food_safe()` to turn SafeCook off. Temperature values are Celsius. Validation checks
 the protocol representation, not whether the parameters are appropriate for a particular food.
 
 All commands await acknowledgement and raise `RequestRejectedError` if the device rejects them.
+Malformed matching node acknowledgements raise `ValueError` immediately and are logged, for
+both prediction and SafeCook commands.
 A timeout, cancellation, or write failure closes a direct probe session; node sessions remain
 usable after individual request failures. An acknowledgement does not update `probe.food_safe`:
 subsequent status reports confirm the program and progress. These commands require firmware

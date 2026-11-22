@@ -181,10 +181,21 @@ class NodeSession(HostSession):
         pending = self._pending.get(frame[_REQUEST_ID])
         if pending is None or pending[0] != message_type or pending[1].done():
             return
-        if message_type in (
-            NodeMessageType.CONFIGURE_FOOD_SAFE.value,
-            NodeMessageType.RESET_FOOD_SAFE.value,
-        ) and (frame[_SUCCESS_INDEX] not in (0, 1) or len(frame) != _RESPONSE_HEADER_LENGTH):
+        invalid_success = frame[_SUCCESS_INDEX] not in (0, 1)
+        unexpected_payload = (
+            message_type
+            in (
+                NodeMessageType.SET_PREDICTION.value,
+                NodeMessageType.CONFIGURE_FOOD_SAFE.value,
+                NodeMessageType.RESET_FOOD_SAFE.value,
+            )
+            and len(frame) != _RESPONSE_HEADER_LENGTH
+        )
+        if invalid_success or unexpected_payload:
+            reason = "invalid success flag" if invalid_success else "unexpected payload"
+            message = f"Malformed node response for {NodeMessageType(message_type).name}: {reason}"
+            LOGGER.warning(message)
+            pending[1].set_exception(ValueError(message))
             return
         pending[1].set_result(
             _Response(bool(frame[_SUCCESS_INDEX]), frame[_RESPONSE_HEADER_LENGTH:])
@@ -197,7 +208,8 @@ class NodeSession(HostSession):
 
         Awaits the node's acknowledgement. An acknowledgement does not mean a prediction is ready;
         relayed status remains authoritative. Raises ``PredictionCommandRejectedError`` when the
-        node reports failure, ``TimeoutError`` after ``command_timeout``, or ``ConnectionError``
+        node reports failure, ``ValueError`` for a malformed response, ``TimeoutError`` after
+        ``command_timeout``, or ``ConnectionError``
         when the session isn't running or closes first.
         """
         await self._send_prediction(serial_number, celsius, PredictionMode.TIME_TO_REMOVAL)
@@ -210,7 +222,8 @@ class NodeSession(HostSession):
         """Configure a probe's SafeCook program through the node and await acknowledgement.
 
         Status remains authoritative. Raises ``ValueError`` for invalid parameters,
-        ``RequestRejectedError`` for rejection, ``TimeoutError`` for timeout, or
+        ``RequestRejectedError`` for rejection, ``ValueError`` for a malformed response,
+        ``TimeoutError`` for timeout, or
         ``ConnectionError`` when closed. Failed requests leave the node session running.
         """
         await self._send_food_safe(

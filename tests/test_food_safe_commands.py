@@ -1,7 +1,8 @@
 """SafeCook command encoding, acknowledgement matching, and failure lifecycle."""
 
 import asyncio
-from dataclasses import replace
+from dataclasses import asdict, replace
+from decimal import Decimal
 
 import pytest
 
@@ -73,17 +74,6 @@ def test_encoding_and_rounding():
         FoodSafeData.from_bytes(simplified.to_bytes()).product
         is SimplifiedProduct.FISH_AND_SHELLFISH
     )
-    zero = FoodSafeProgram(
-        FoodSafeMode.SIMPLIFIED,
-        SimplifiedProduct.DEFAULT,
-        Serving.SERVED_IMMEDIATELY,
-        0,
-        0,
-        0,
-        0,
-        0,
-    )
-    assert zero.to_bytes() == bytes(10)
 
 
 @pytest.mark.parametrize(
@@ -96,7 +86,22 @@ def test_encoding_and_rounding():
         "target_log_reduction",
     ],
 )
-@pytest.mark.parametrize("value", [-0.01, 409.56, float("nan"), float("inf"), -float("inf")])
+@pytest.mark.parametrize(
+    "value",
+    [
+        -0.01,
+        409.56,
+        float("nan"),
+        float("inf"),
+        -float("inf"),
+        None,
+        "3.5",
+        [],
+        {},
+        complex(1, 2),
+        True,
+    ],
+)
 def test_invalid_numbers(field, value):
     with pytest.raises(ValueError):
         replace(PROGRAM, **{field: value}).to_bytes()
@@ -107,7 +112,7 @@ def test_invalid_numbers(field, value):
     [
         {"mode": 7},
         {"product": 1024},
-        {"product": 3},  # Deprecated integrated category.
+        {"product": 23},  # Reserved integrated category.
         {"product": SimplifiedProduct.ANY_POULTRY},  # IntEnums compare equal across types.
         {"mode": FoodSafeMode.SIMPLIFIED},  # Integrated product in simplified mode.
         {"serving": 7},
@@ -117,6 +122,103 @@ def test_invalid_numbers(field, value):
 def test_invalid_choices(changes):
     with pytest.raises(ValueError):
         replace(PROGRAM, **changes).to_bytes()
+
+
+@pytest.mark.parametrize("product", [3, *range(5, 13)])
+def test_legacy_program_round_trip_with_changed_serving(product):
+    decoded = FoodSafeData.from_bytes(encode_food_safe_data(product=product))
+    program = FoodSafeProgram(**asdict(decoded))
+    changed = replace(program, serving=Serving.COOKED_AND_CHILLED)
+    assert changed.to_bytes() == encode_food_safe_data(product=product, serving=1)
+
+
+@pytest.mark.parametrize(
+    "field", ["threshold_temperature", "z_value", "reference_temperature", "d_value"]
+)
+@pytest.mark.parametrize(
+    ("value", "expected"), [(0.024, 0), (0.025, 0.05), (0.075, 0.1), (5.625, 5.65)]
+)
+def test_decimal_halfway_rounding(field, value, expected):
+    decoded = FoodSafeData.from_bytes(replace(PROGRAM, **{field: value}).to_bytes())
+    assert getattr(decoded, field) == expected
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"), [(6.249, 6.2), (6.25, 6.3), (6.251, 6.3), (Decimal("6.25"), 6.3)]
+)
+def test_log_target_halfway_rounding(value, expected):
+    assert (
+        FoodSafeData.from_bytes(
+            replace(PROGRAM, target_log_reduction=value).to_bytes()
+        ).target_log_reduction
+        == expected
+    )
+
+
+@pytest.mark.parametrize("node", [False, True])
+@pytest.mark.parametrize("value", [0, 0.001, 0.024])
+def test_configuration_cannot_encode_off(node, value):
+    async def run():
+        if node:
+            _, client, session = await start()
+        else:
+            _, client, session, _ = setup_session()
+            await session.start()
+        program = FoodSafeProgram(
+            FoodSafeMode.SIMPLIFIED,
+            SimplifiedProduct.DEFAULT,
+            Serving.SERVED_IMMEDIATELY,
+            value,
+            value,
+            value,
+            value,
+            value,
+        )
+        args = (SERIAL,) if node else ()
+        with pytest.raises(ValueError, match="clear_food_safe"):
+            await session.configure_food_safe(*args, program)
+        assert not client.writes
+        if not node:
+            client.reply = response_frame(type_=7)
+        await session.clear_food_safe(*args)
+        assert client.writes[-1][10 if node else 6 :] == (
+            SERIAL.to_bytes(4, "little") if node else b""
+        ) + bytes(10)
+        await session.stop()
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("type_", [5, 7, 8])
+@pytest.mark.parametrize("malformed", ["success", "payload"])
+def test_malformed_node_acknowledgement_fails_promptly(type_, malformed, caplog):
+    async def run():
+        _, client, session = await start(None, timeout=30)
+        request = {
+            5: lambda: session.set_removal_temperature(SERIAL, 60),
+            7: lambda: session.configure_food_safe(SERIAL, PROGRAM),
+            8: lambda: session.reset_food_safe(SERIAL),
+        }[type_]
+        command = asyncio.create_task(request())
+        await settle()
+        frame = bytearray(
+            node_response(
+                type_, client.requests[-1][1], payload=b"bad" if malformed == "payload" else b""
+            )
+        )
+        if malformed == "success":
+            frame[13] = 2
+            frame[2:4] = crc16ccitt(frame[4:]).to_bytes(2, "little")
+        client.emit(UART_TX_CHARACTERISTIC, frame)
+        with pytest.raises(ValueError, match="Malformed node response"):
+            await asyncio.wait_for(command, 0.2)
+        assert "Malformed node response" in caplog.text
+        assert not session._pending
+        client.responder = acknowledge
+        await session.reset_food_safe(SERIAL)
+        await session.stop()
+
+    asyncio.run(run())
 
 
 @pytest.mark.parametrize("node", [False, True])
@@ -154,6 +256,8 @@ def test_configuration_clear_reset_and_reported_state(node):
         writes = len(client.writes)
         with pytest.raises(ValueError):
             await session.configure_food_safe(*args, replace(PROGRAM, d_value=-1))
+        with pytest.raises(ValueError, match="d_value must be numeric"):
+            await session.configure_food_safe(*args, replace(PROGRAM, d_value=None))
         assert len(client.writes) == writes
         if node:
             for serial in (-1, 1 << 32):
@@ -199,13 +303,15 @@ def test_matching_and_malformed_acknowledgements(node):
                 else response_frame(type_=type_, payload=payload)
             )
 
-        client.emit(UART_TX_CHARACTERISTIC, reply(5) + reply(8) + reply(7, b"unexpected"))
+        client.emit(UART_TX_CHARACTERISTIC, reply(5) + reply(8))
         if node:
             client.emit(UART_TX_CHARACTERISTIC, reply(7, request_id=bytes(4)))
-        bad_success = bytearray(reply(7))
-        bad_success[13 if node else 5] = 2
-        bad_success[2:4] = crc16ccitt(bad_success[4:]).to_bytes(2, "little")
-        client.emit(UART_TX_CHARACTERISTIC, bad_success)
+        else:
+            client.emit(UART_TX_CHARACTERISTIC, reply(7, b"unexpected"))
+            bad_success = bytearray(reply(7))
+            bad_success[5] = 2
+            bad_success[2:4] = crc16ccitt(bad_success[4:]).to_bytes(2, "little")
+            client.emit(UART_TX_CHARACTERISTIC, bad_success)
         await settle()
         assert not command.done()
         good = reply(7)

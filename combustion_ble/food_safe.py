@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
+from decimal import ROUND_HALF_UP, Decimal
 
 from combustion_ble.ble_data.food_safe_data import (
     FoodSafeData,
@@ -23,11 +23,14 @@ class FoodSafeProgram:
     Temperatures and Z-value are Celsius. The four 13-bit decimal fields accept 0–409.55
     and round to 0.05 steps; target log reduction accepts 0–25.5 and rounds to 0.1.
     Validation checks protocol ranges and supported enums, not the suitability of a program
-    for a particular food. Reserved and deprecated enum values cannot be written.
+    for a particular food. Reserved enum values cannot be written. Deprecated Integrated
+    product IDs (3 and 5–12) may be supplied as integers for backward compatibility.
+    Exact halfway values round up. Programs that encode as all zeros are rejected; use
+    ``clear_food_safe()`` to turn SafeCook off.
     """
 
     mode: FoodSafeMode
-    product: SimplifiedProduct | IntegratedProduct
+    product: SimplifiedProduct | IntegratedProduct | int
     serving: Serving
     threshold_temperature: float
     z_value: float
@@ -45,7 +48,12 @@ class FoodSafeProgram:
         product_type = (
             SimplifiedProduct if self.mode is FoodSafeMode.SIMPLIFIED else IntegratedProduct
         )
-        if not isinstance(self.product, product_type):
+        legacy_product = (
+            self.mode is FoodSafeMode.INTEGRATED
+            and type(self.product) is int
+            and self.product in (3, *range(5, 13))
+        )
+        if not isinstance(self.product, product_type) and not legacy_product:
             raise ValueError("Food safe product must match the selected mode")
         if not isinstance(self.serving, Serving):
             raise ValueError("Unsupported food safe serving")
@@ -56,14 +64,21 @@ class FoodSafeProgram:
             ("reference_temperature", self.reference_temperature, 42),
             ("d_value", self.d_value, 55),
         ):
-            if not math.isfinite(value) or not 0 <= value <= 409.55:
-                raise ValueError(f"{name} must be finite and between 0 and 409.55")
-            raw |= round(value * 20) << shift
-        target = self.target_log_reduction
-        if not math.isfinite(target) or not 0 <= target <= 25.5:
-            raise ValueError("target_log_reduction must be finite and between 0 and 25.5")
-        raw |= round(target * 10) << 68
+            raw |= _encode_decimal(name, value, 20, "409.55") << shift
+        raw |= _encode_decimal("target_log_reduction", self.target_log_reduction, 10, "25.5") << 68
+        if raw == 0:
+            raise ValueError("Program encodes as SafeCook off; use clear_food_safe() instead")
         return raw.to_bytes(10, "little")
+
+
+def _encode_decimal(name: str, value: float, scale: int, maximum: str) -> int:
+    # Use the decimal spelling so halfway inputs such as 6.25 and 0.075 round consistently.
+    if isinstance(value, bool) or not isinstance(value, (int, float, Decimal)):
+        raise ValueError(f"{name} must be numeric")
+    decimal = Decimal(str(value))
+    if not decimal.is_finite() or not 0 <= decimal <= Decimal(maximum):
+        raise ValueError(f"{name} must be finite and between 0 and {maximum}")
+    return int((decimal * scale).to_integral_value(rounding=ROUND_HALF_UP))
 
 
 @dataclass(frozen=True, slots=True)
