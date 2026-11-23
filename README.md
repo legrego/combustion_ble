@@ -47,6 +47,17 @@ for probe in meatnet.probes.values():
 
 Listeners only fire when something observable changes, so repeated identical advertisements are cheap.
 
+Probes and gauges are often switched off for long periods. To keep showing ones you know about, such as after a restart, restore them by serial number:
+
+```python
+probe = meatnet.restore_probe(0x10001CCC)
+gauge = meatnet.restore_gauge("GG00000001")
+
+print(probe.heard, probe.available, probe.core_temperature)  # False False None
+```
+
+A restored device has no readings until it is heard. The same object is then updated, and its listeners are called. `meatnet.forget(probe)` removes one that hasn't been heard.
+
 ### Home Assistant
 
 Register a Bluetooth callback for manufacturer ID `2503` with `connectable=False` (so advertisements relayed by passive proxies are included), and hand each `BluetoothServiceInfoBleak` to the `MeatNet`:

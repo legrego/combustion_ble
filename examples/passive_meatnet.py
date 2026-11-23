@@ -39,12 +39,14 @@ def build_table(meatnet: MeatNet) -> Table:
                 f"Surface {_format(probe.surface_temperature)} | "
                 f"Ambient {_format(probe.ambient_temperature)}"
             )
+        probe_id = "-" if probe.probe_id is None else probe.probe_id.value + 1
+        battery = "-" if probe.battery_status is None else probe.battery_status.name.lower()
         source = "direct" if probe.source_hop_count is None else f"{probe.source_hop_count} hop(s)"
         table.add_row(
-            f"Probe {probe.serial_number_string} (ID {probe.probe_id.value + 1})",
+            f"Probe {probe.serial_number_string} (ID {probe_id})",
             str(probe.available),
             source,
-            f"{readings} | battery {probe.battery_status.name.lower()}",
+            f"{readings} | battery {battery}",
         )
 
     for gauge in meatnet.gauges.values():

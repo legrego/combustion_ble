@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Add `MeatNet.restore_probe()` and `MeatNet.restore_gauge()`, which add devices known from earlier, such as before a restart, that may not be in range. They are unavailable, with no readings, until they are heard, and are then updated in place. `MeatNet.forget()` removes one that hasn't been heard.
+- Add `Device.heard`, which is `False` only until a restored device is heard.
+- **Breaking:** fields that advertisements supply are now `None` until they do, instead of starting with values that look like readings: `Probe.probe_id`, `Probe.color`, and `Probe.battery_status`, and `Gauge.sensor_present`, `Gauge.sensor_overheating`, and `Gauge.low_battery`. `Device.last_seen` and `Gauge.address` are `None` until a restored device is heard. Discovered gauges always have values. Discovered probes do once they have been heard in normal or instant read mode.
 - **Breaking:** remove the `dev` extra. The development tools are now PEP 735 dependency groups, which aren't part of the published package; install them from a clone with `pip install --group dev -e .`.
 
 ## [v0.10.0](https://github.com/legrego/combustion_ble/releases/tag/v0.10.0) - 2026-11-22

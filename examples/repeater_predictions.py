@@ -139,8 +139,9 @@ def build_table(
             if probe.prediction_updated_at is None
             else f"{now - probe.prediction_updated_at:.0f}s"
         )
+        probe_id = "-" if probe.probe_id is None else probe.probe_id.value + 1
         row = [
-            f"{probe.serial_number_string} (ID {probe.probe_id.value + 1})",
+            f"{probe.serial_number_string} (ID {probe_id})",
             str(probe.firmware_version or "-"),
             "-" if route is None else str(route.hop_count),
             str(status_counts.get(probe.serial_number, 0)),

@@ -74,6 +74,9 @@ INSTANT_READ_LOCK_TIMEOUT = 1.0
 INSTANT_READ_STALE_TIMEOUT = 5.0
 """Seconds without instant read data before the instant read reading is cleared."""
 
+MAX_PROBE_SERIAL_NUMBER = 0xFFFFFFFF
+"""Probe serial numbers are 4 bytes. Zero means that there is no probe."""
+
 Listener = Callable[[], None]
 """Called with no arguments when a device's state changes."""
 
@@ -130,12 +133,14 @@ _HOST_SOURCE = object()
 class Device:
     """State common to every Combustion device."""
 
-    def __init__(self, now: float) -> None:
-        self.available: bool = True
-        """``False`` once nothing has been heard from the device for the stale timeout."""
+    def __init__(self, now: float | None) -> None:
+        self.available: bool = now is not None
+        """``False`` once nothing has been heard from the device for the stale timeout, and until a
+        restored device is heard."""
 
-        self.last_seen: float = now
-        """Clock time of the most recent advertisement about this device."""
+        self.last_seen: float | None = now
+        """Clock time of the most recent advertisement about this device. ``None`` until a restored
+        device is heard."""
 
         self.firmware_version: FirmwareVersion | None = None
         """Firmware revision, once read through a connection. ``None`` until then.
@@ -149,6 +154,16 @@ class Device:
         """Hardware revision, once read through a connection. Follows :attr:`firmware_version`."""
 
         self._listeners: list[Listener] = []
+
+    @property
+    def heard(self) -> bool:
+        """Whether any advertisement about this device has been received.
+
+        ``False`` only for devices from :meth:`MeatNet.restore_probe` and
+        :meth:`MeatNet.restore_gauge`, until they are heard. Unlike :attr:`available`, it stays
+        ``True`` once the device goes silent.
+        """
+        return self.last_seen is not None
 
     def add_listener(self, listener: Listener) -> RemoveListener:
         """Call ``listener`` whenever this device's state changes.
@@ -180,14 +195,14 @@ class Device:
         self.available = True
 
     def _expire(self, now: float, stale_timeout: float) -> None:
-        if self.available and now - self.last_seen > stale_timeout:
+        if self.last_seen is not None and now - self.last_seen > stale_timeout:
             self.available = False
 
 
 class Probe(Device):
     """A Predictive Thermometer, heard directly or relayed by MeatNet nodes."""
 
-    def __init__(self, serial_number: int, now: float) -> None:
+    def __init__(self, serial_number: int, now: float | None) -> None:
         super().__init__(now)
         self.serial_number: int = serial_number
 
@@ -210,13 +225,19 @@ class Probe(Device):
         so this does not follow the mode of each advertisement.
         """
 
-        self.probe_id: ProbeID = ProbeID.ID1
-        self.color: ProbeColor = ProbeColor.color1
-        self.battery_status: BatteryStatus = BatteryStatus.OK
+        self.probe_id: ProbeID | None = None
+        """``None`` until usable data is heard."""
+
+        self.color: ProbeColor | None = None
+        """``None`` until usable data is heard."""
+
+        self.battery_status: BatteryStatus | None = None
+        """``None`` until usable data is heard."""
 
         self.temperatures: tuple[float, ...] | None = None
         """Readings for T1-T8 in Celsius from the most recent normal mode data."""
 
+        # Meaningful only once there are temperatures for them to select from.
         self.core_sensor: VirtualCoreSensor = VirtualCoreSensor.T1
         self.surface_sensor: VirtualSurfaceSensor = VirtualSurfaceSensor.T4
         self.ambient_sensor: VirtualAmbientSensor = VirtualAmbientSensor.T5
@@ -492,16 +513,24 @@ class Gauge(Device):
     same serial number.
     """
 
-    def __init__(self, serial_number: str, address: str, now: float) -> None:
+    def __init__(self, serial_number: str, address: str | None, now: float | None) -> None:
         super().__init__(now)
         self.serial_number: str = serial_number
-        self.address: str = address
+        self.address: str | None = address
+        """Bluetooth address of the gauge, once it has been heard."""
+
         self.temperature: float | None = None
         """Gauge temperature in Celsius, or ``None`` when the sensor is not connected."""
 
-        self.sensor_present: bool = False
-        self.sensor_overheating: bool = False
-        self.low_battery: bool = False
+        self.sensor_present: bool | None = None
+        """``None`` until the gauge is heard."""
+
+        self.sensor_overheating: bool | None = None
+        """``None`` until the gauge is heard."""
+
+        self.low_battery: bool | None = None
+        """``None`` until the gauge is heard."""
+
         self.high_alarm: AlarmStatus | None = None
         self.low_alarm: AlarmStatus | None = None
         self.high_radio_power: bool | None = None
@@ -625,12 +654,12 @@ class MeatNet:
 
     @property
     def probes(self) -> Mapping[int, Probe]:
-        """Known probes, by serial number."""
+        """Known probes, by serial number, including restored ones that haven't been heard."""
         return MappingProxyType(self._probes)
 
     @property
     def gauges(self) -> Mapping[str, Gauge]:
-        """Known Giant Grill Gauges, by serial number."""
+        """Known Giant Grill Gauges, by serial number, including restored ones."""
         return MappingProxyType(self._gauges)
 
     @property
@@ -644,10 +673,11 @@ class MeatNet:
         return [*self._probes.values(), *self._gauges.values(), *self._nodes.values()]
 
     def add_device_listener(self, listener: DeviceListener) -> RemoveListener:
-        """Call ``listener`` once for each newly discovered device.
+        """Call ``listener`` once for each newly discovered or restored device.
 
         The device's initial state has already been applied when ``listener`` is called. Use
-        :meth:`Device.add_listener` to follow later changes.
+        :meth:`Device.add_listener` to follow later changes, which include a restored device
+        being heard.
         """
         self._device_listeners.append(listener)
 
@@ -656,6 +686,51 @@ class MeatNet:
                 self._device_listeners.remove(listener)
 
         return remove
+
+    def restore_probe(self, serial_number: int) -> Probe:
+        """Add a probe known from earlier, such as before a restart, that may not be in range.
+
+        The probe is unavailable, with no readings, until it is heard. It is then updated in place,
+        and its listeners are called. Returns the existing probe if it is already known.
+
+        :raises ValueError: If ``serial_number`` is not a valid probe serial number.
+        """
+        if not 0 < serial_number <= MAX_PROBE_SERIAL_NUMBER:
+            raise ValueError(f"Invalid probe serial number: {serial_number}")
+        tracker = _ChangeTracker()
+        probe = self._get_probe(serial_number, None, tracker)
+        self._publish(tracker)
+        return probe
+
+    def restore_gauge(self, serial_number: str) -> Gauge:
+        """Add a Giant Grill Gauge known from earlier. Works like :meth:`restore_probe`.
+
+        The gauge's MeatNet node is not restored. It is discovered when the gauge is heard.
+
+        :raises ValueError: If ``serial_number`` is empty.
+        """
+        if not serial_number:
+            raise ValueError("Gauge serial number is empty")
+        tracker = _ChangeTracker()
+        gauge = self._get_gauge(serial_number, None, None, tracker)
+        self._publish(tracker)
+        return gauge
+
+    def forget(self, device: Probe | Gauge) -> None:
+        """Remove a restored device that hasn't been heard.
+
+        If it is heard later, it is discovered as a new device. Does nothing if the device has
+        already been removed.
+
+        :raises ValueError: If the device has been heard.
+        """
+        if device.heard:
+            raise ValueError(f"{device} has been heard")
+        if isinstance(device, Probe):
+            if self._probes.get(device.serial_number) is device:
+                del self._probes[device.serial_number]
+        elif self._gauges.get(device.serial_number) is device:
+            del self._gauges[device.serial_number]
 
     def handle_service_info(self, service_info: ServiceInfo) -> list[Device]:
         """Handle a Home Assistant ``BluetoothServiceInfoBleak``.
@@ -803,7 +878,7 @@ class MeatNet:
             firmware_version = FirmwareVersion.parse(firmware_version)
         targets: list[Device] = [device]
         if isinstance(device, Gauge):
-            node = self._nodes.get(device.address)
+            node = None if device.address is None else self._nodes.get(device.address)
             if node is not None and node.serial_number == device.serial_number:
                 targets.append(node)
         elif isinstance(device, Node) and device.serial_number:
@@ -868,21 +943,27 @@ class MeatNet:
 
         if not advertisement.serial_number:
             return
-        gauge = self._gauges.get(advertisement.serial_number)
-        if gauge is None:
-            gauge = Gauge(advertisement.serial_number, address, now)
-            self._gauges[advertisement.serial_number] = gauge
-            tracker.discovered(gauge)
+        gauge = self._get_gauge(advertisement.serial_number, address, now, tracker)
         tracker.watch(gauge)
         gauge._handle_advertisement(advertisement, address, rssi, connectable, now)
 
-    def _get_probe(self, serial_number: int, now: float, tracker: _ChangeTracker) -> Probe:
+    def _get_probe(self, serial_number: int, now: float | None, tracker: _ChangeTracker) -> Probe:
         probe = self._probes.get(serial_number)
         if probe is None:
             probe = Probe(serial_number, now)
             self._probes[serial_number] = probe
             tracker.discovered(probe)
         return probe
+
+    def _get_gauge(
+        self, serial_number: str, address: str | None, now: float | None, tracker: _ChangeTracker
+    ) -> Gauge:
+        gauge = self._gauges.get(serial_number)
+        if gauge is None:
+            gauge = Gauge(serial_number, address, now)
+            self._gauges[serial_number] = gauge
+            tracker.discovered(gauge)
+        return gauge
 
     def _get_node(self, address: str, now: float, tracker: _ChangeTracker) -> Node:
         node = self._nodes.get(address)

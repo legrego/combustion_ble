@@ -15,6 +15,7 @@ from combustion_ble import (
     PowerMode,
     Probe,
     ProbeMode,
+    plan_connections,
 )
 from combustion_ble.meatnet import (
     DEFAULT_STALE_TIMEOUT,
@@ -503,3 +504,161 @@ class TestExpiry:
 
         meatnet.handle_advertisement(NODE_A, gauge_payload(sensor_present=False))
         assert calls == [None]
+
+
+GAUGE_SERIAL = "AB12CD34EF"
+
+
+class TestRestore:
+    def test_restored_probe_has_no_readings(self, meatnet: MeatNet):
+        probe = meatnet.restore_probe(SERIAL)
+
+        assert meatnet.probes == {SERIAL: probe}
+        assert meatnet.devices == [probe]
+        assert probe.serial_number_string == "12345678"
+        assert not probe.heard
+        assert not probe.available
+        assert probe.last_seen is None
+        assert probe.address is None
+        assert probe.temperatures is None
+        assert probe.core_temperature is None
+        assert probe.instant_read_celsius is None
+        assert probe.battery_status is None
+        assert probe.probe_id is None
+        assert probe.color is None
+
+    def test_restored_gauge_has_no_readings(self, meatnet: MeatNet):
+        gauge = meatnet.restore_gauge(GAUGE_SERIAL)
+
+        assert meatnet.gauges == {GAUGE_SERIAL: gauge}
+        assert meatnet.nodes == {}
+        assert not gauge.heard
+        assert not gauge.available
+        assert gauge.last_seen is None
+        assert gauge.address is None
+        assert gauge.temperature is None
+        assert gauge.low_battery is None
+        assert gauge.sensor_present is None
+        assert gauge.sensor_overheating is None
+
+    @pytest.mark.parametrize("serial_number", [0, -1, 0x1_0000_0000])
+    def test_invalid_probe_serial_numbers_are_rejected(self, meatnet: MeatNet, serial_number: int):
+        with pytest.raises(ValueError):
+            meatnet.restore_probe(serial_number)
+        assert meatnet.devices == []
+
+    def test_empty_gauge_serial_number_is_rejected(self, meatnet: MeatNet):
+        with pytest.raises(ValueError):
+            meatnet.restore_gauge("")
+        assert meatnet.devices == []
+
+    @pytest.mark.parametrize("hop", [None, 0])
+    def test_probe_is_updated_in_place_when_heard(
+        self, meatnet: MeatNet, clock: FakeClock, hop: int | None
+    ):
+        discovered: list[Device] = []
+        meatnet.add_device_listener(discovered.append)
+        probe = meatnet.restore_probe(SERIAL)
+        assert discovered == [probe]
+        calls: list[bool] = []
+        probe.add_listener(lambda: calls.append(probe.available))
+
+        address = PROBE_ADDRESS if hop is None else NODE_A
+        meatnet.handle_advertisement(address, probe_payload(hop=hop))
+        assert probe_of(meatnet) is probe
+        assert probe not in discovered[1:]
+        assert calls == [True]
+        assert probe.heard
+        assert probe.last_seen == clock.now
+        assert probe.temperatures == DIRECT_TEMPS
+        assert probe.battery_status == BatteryStatus.OK
+
+        # Going silent again isn't the same as never having been heard.
+        clock.advance(DEFAULT_STALE_TIMEOUT + 0.1)
+        meatnet.expire()
+        assert calls == [True, False]
+        assert probe.heard
+
+    def test_gauge_is_updated_in_place_when_heard(self, meatnet: MeatNet):
+        discovered: list[Device] = []
+        meatnet.add_device_listener(discovered.append)
+        gauge = meatnet.restore_gauge(GAUGE_SERIAL)
+        assert discovered == [gauge]
+        calls: list[bool] = []
+        gauge.add_listener(lambda: calls.append(gauge.available))
+
+        meatnet.handle_advertisement(NODE_A, gauge_payload(temperature=180.5))
+        assert meatnet.gauges[GAUGE_SERIAL] is gauge
+        assert discovered == [gauge, meatnet.nodes[NODE_A]]
+        assert calls == [True]
+        assert gauge.heard
+        assert gauge.address == NODE_A
+        assert gauge.temperature == 180.5
+        assert gauge.low_battery is False
+
+    def test_unusable_data_is_heard_without_readings(self, meatnet: MeatNet):
+        probe = meatnet.restore_probe(SERIAL)
+        meatnet.handle_advertisement(PROBE_ADDRESS, probe_payload(mode=ProbeMode.ERROR.value))
+        assert probe.heard
+        assert probe.available
+        assert probe.battery_status is None
+        assert probe.temperatures is None
+
+    def test_expire_leaves_restored_devices_alone(self, meatnet: MeatNet, clock: FakeClock):
+        meatnet.restore_probe(SERIAL)
+        meatnet.restore_gauge(GAUGE_SERIAL)
+        clock.advance(DEFAULT_STALE_TIMEOUT + 0.1)
+        assert meatnet.expire() == []
+
+    def test_restoring_a_known_device_returns_it(self, meatnet: MeatNet):
+        meatnet.handle_advertisement(PROBE_ADDRESS, probe_payload())
+        meatnet.handle_advertisement(NODE_A, gauge_payload())
+        discovered: list[Device] = []
+        meatnet.add_device_listener(discovered.append)
+
+        probe = meatnet.restore_probe(SERIAL)
+        gauge = meatnet.restore_gauge(GAUGE_SERIAL)
+        assert probe.available and probe.temperatures == DIRECT_TEMPS
+        assert gauge.available and gauge.heard
+        assert meatnet.restore_probe(SERIAL) is probe
+        assert discovered == []
+
+    def test_restored_devices_need_no_connection(self, meatnet: MeatNet):
+        meatnet.restore_probe(SERIAL)
+        meatnet.restore_gauge(GAUGE_SERIAL)
+        plan = plan_connections(meatnet)
+        assert plan.repeaters == ()
+        assert plan.direct == plan.release == frozenset()
+
+    def test_information_for_a_restored_gauge(self, meatnet: MeatNet):
+        gauge = meatnet.restore_gauge(GAUGE_SERIAL)
+        assert meatnet.handle_device_information(gauge, hardware_revision="v1") == [gauge]
+        assert gauge.hardware_revision == "v1"
+
+    def test_forgotten_device_is_discovered_when_heard(self, meatnet: MeatNet):
+        probe = meatnet.restore_probe(SERIAL)
+        gauge = meatnet.restore_gauge(GAUGE_SERIAL)
+        meatnet.forget(probe)
+        meatnet.forget(gauge)
+        assert meatnet.devices == []
+
+        discovered: list[Device] = []
+        meatnet.add_device_listener(discovered.append)
+        meatnet.handle_advertisement(PROBE_ADDRESS, probe_payload())
+        meatnet.handle_advertisement(NODE_A, gauge_payload())
+        heard = probe_of(meatnet), meatnet.gauges[GAUGE_SERIAL]
+        assert probe is not heard[0] and gauge is not heard[1]
+        assert all(device in discovered for device in heard)
+
+        # The forgotten objects no longer stand for anything.
+        meatnet.forget(probe)
+        meatnet.forget(gauge)
+        assert (probe_of(meatnet), meatnet.gauges[GAUGE_SERIAL]) == heard
+
+    def test_heard_device_cannot_be_forgotten(self, meatnet: MeatNet, clock: FakeClock):
+        meatnet.handle_advertisement(PROBE_ADDRESS, probe_payload())
+        clock.advance(DEFAULT_STALE_TIMEOUT + 0.1)
+        meatnet.expire()
+        with pytest.raises(ValueError):
+            meatnet.forget(probe_of(meatnet))
+        assert SERIAL in meatnet.probes

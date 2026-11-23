@@ -266,3 +266,24 @@ def test_direct_and_node_sessions_together():
         assert probe.prediction is None
 
     asyncio.run(run())
+
+
+def test_status_for_a_restored_probe_waits_until_it_is_heard():
+    async def run():
+        meatnet, client, session, _ = setup_session()
+        serial_number = 0x01020304
+        probe = meatnet.restore_probe(serial_number)
+        await session.start()
+        emit(client, node_status_frame(serial_number, seconds=600))
+        assert probe.prediction is None
+        assert not session._is_reporting(serial_number)
+
+        meatnet.handle_advertisement(
+            NODE_ADDRESS, probe_payload(serial_number=serial_number, hop=0)
+        )
+        emit(client, node_status_frame(serial_number, seconds=600))
+        assert meatnet.probes[serial_number].prediction.seconds_remaining == 600
+        assert session._is_reporting(serial_number)
+        await session.stop()
+
+    asyncio.run(run())

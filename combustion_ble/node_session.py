@@ -330,7 +330,8 @@ class NodeSession(HostSession):
             return
 
         serial_number = int.from_bytes(payload[_SERIAL], "little")
-        if serial_number not in self._meatnet.probes:
+        probe = self._meatnet.probes.get(serial_number)
+        if probe is None or not probe.heard:
             # The node's own advertisements will announce the probe shortly.
             LOGGER.debug("Ignoring relayed status for undiscovered probe %08X", serial_number)
             return
