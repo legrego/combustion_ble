@@ -52,7 +52,7 @@ docs = [
     "myst-parser==5.2.0",
     "sphinx-copybutton==0.5.2",
     "sphinx-autobuild==2025.8.25",
-    "sphinx-autodoc-typehints==3.17.6",
+    "sphinx-autodoc-typehints==3.17.7",
 ]
 release = [
     "twine==7.0.0",
