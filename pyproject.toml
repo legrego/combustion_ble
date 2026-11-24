@@ -57,7 +57,7 @@ docs = [
 release = [
     "twine==7.0.0",
     "build==1.6.1",
-    "packaging==26.3",
+    "packaging==26.4",
 ]
 examples = [
     "rich==15.0.0",
