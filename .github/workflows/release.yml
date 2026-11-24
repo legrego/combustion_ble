@@ -1,0 +1,128 @@
+name: Release
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to create or reuse (for example v0.4.0)
+        required: true
+        type: string
+      publish:
+        description: Publish to PyPI and GitHub (off means dry run)
+        default: false
+        type: boolean
+
+jobs:
+  validate:
+    name: Validate
+    uses: ./.github/workflows/main.yml
+    # A called workflow can't have more permissions than its caller, so this must cover
+    # everything main.yml's jobs request.
+    permissions:
+      contents: read
+      pull-requests: write
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PYTHONPATH: ./
+      RELEASE_TAG: ${{ inputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # Existing tags are checked.
+          persist-credentials: false
+
+      - name: Validate release tag
+        run: python3 scripts/validate_release.py "$RELEASE_TAG"
+
+      - name: Setup Python environment
+        uses: ./.github/actions/setup-venv
+        with:
+          python-version: "3.14"
+
+      - name: Build distributions
+        run: |
+          . .venv/bin/activate
+          python -m build
+
+      - name: Validate distributions and generate release notes
+        run: |
+          . .venv/bin/activate
+          python scripts/validate_release.py "$RELEASE_TAG" --dist dist
+          twine check --strict dist/*
+          cat RELEASE_NOTES.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@v7
+        with:
+          name: package
+          path: dist
+
+      - name: Upload release notes
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-notes
+          path: RELEASE_NOTES.md
+
+  publish:
+    name: Publish to PyPI
+    if: inputs.publish
+    needs: [validate, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # PyPI's trusted publisher is tied to this workflow's file name and this environment, so
+    # renaming either one breaks publishing until PyPI is updated. See RELEASE_PROCESS.md.
+    environment:
+      name: pypi
+      url: https://pypi.org/project/combustion-ble/
+    # Anything in this job can publish to PyPI, so it only uploads the validated
+    # distributions. Don't check out, install, or build anything here.
+    permissions:
+      id-token: write # Exchanged for a short-lived PyPI token; no secret is stored.
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@v8
+        with:
+          name: package
+          path: dist
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+
+  github-release:
+    name: Create GitHub release
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_TAG: ${{ inputs.tag }}
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@v8
+        with:
+          name: package
+          path: dist
+
+      - name: Download release notes
+        uses: actions/download-artifact@v8
+        with:
+          name: release-notes
+
+      - name: Create tag and GitHub release
+        run: >-
+          gh release create "$RELEASE_TAG" dist/* --target "$GITHUB_SHA"
+          --title "$RELEASE_TAG" --notes-file RELEASE_NOTES.md

@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## Unreleased
 
 - **Breaking:** remove the `dev` extra. The development tools are now PEP 735 dependency groups, which aren't part of the published package; install them from a clone with `pip install --group dev -e .`.
+- Publish to PyPI with trusted publishing instead of a stored API token. Releases now include [attestations](https://docs.pypi.org/attestations/).
 
 ## [v0.10.0](https://github.com/legrego/combustion_ble/releases/tag/v0.10.0) - 2026-11-22
 
