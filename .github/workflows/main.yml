@@ -1,23 +1,16 @@
 name: Main
 
 concurrency:
-  group: ${{ github.workflow }}-${{ inputs.tag || github.ref }}
+  # The Release workflow calls this one. There, github.workflow is "Release" and the event is
+  # workflow_dispatch, so a release neither shares a group with Main runs nor gets cancelled.
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 permissions:
   contents: read
 
 on:
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: Release tag to create or reuse (for example v0.4.0)
-        required: true
-        type: string
-      publish:
-        description: Create the tag and publish to PyPI and GitHub (off means dry run)
-        default: false
-        type: boolean
+  workflow_call:
   pull_request:
     branches:
       - main
@@ -31,30 +24,7 @@ env:
   PYTHONPATH: ./
 
 jobs:
-  prepare:
-    name: Resolve release source
-    runs-on: ubuntu-latest
-    outputs:
-      sha: ${{ steps.source.outputs.sha }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ github.sha }}
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Resolve commit and validate release tag
-        id: source
-        env:
-          RELEASE_TAG: ${{ inputs.tag }}
-        run: |
-          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
-            python3 scripts/validate_release.py "$RELEASE_TAG"
-          fi
-
   checks:
-    needs: prepare
     name: Python ${{ matrix.python }} - ${{ matrix.task.name }}
     runs-on: [ubuntu-latest]
     timeout-minutes: 15
@@ -104,8 +74,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ needs.prepare.outputs.sha }}
 
       - name: Setup Python environment
         uses: ./.github/actions/setup-venv
@@ -147,14 +115,14 @@ jobs:
           coverage-path-prefix: combustion_ble/
 
       - name: Upload package distribution files
-        if: matrix.task.name == 'Build'
+        # The Release workflow uploads the package it publishes under this name.
+        if: matrix.task.name == 'Build' && github.event_name != 'workflow_dispatch'
         uses: actions/upload-artifact@v7
         with:
           name: package
           path: dist
 
   ha-constraints:
-    needs: prepare
     name: Home Assistant ${{ matrix.home-assistant }} constraints
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -169,7 +137,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ needs.prepare.outputs.sha }}
           persist-credentials: false
 
       - name: Setup Python
@@ -196,75 +163,3 @@ jobs:
         run: |
           uv venv
           uv pip install --dry-run --constraint "$RUNNER_TEMP/package_constraints.txt" .
-
-  release:
-    name: ${{ inputs.publish && 'Publish release' || 'Release dry run' }}
-    if: github.event_name == 'workflow_dispatch'
-    needs: [prepare, checks, ha-constraints]
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      contents: write
-    env:
-      RELEASE_TAG: ${{ inputs.tag }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ needs.prepare.outputs.sha }}
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Setup Python environment
-        uses: ./.github/actions/setup-venv
-        with:
-          python-version: "3.14"
-
-      - name: Download validated distributions
-        uses: actions/download-artifact@v8
-        with:
-          name: package
-          path: dist
-
-      - name: Validate distributions and generate release notes
-        run: |
-          . .venv/bin/activate
-          python scripts/validate_release.py "$RELEASE_TAG" --dist dist
-          twine check --strict dist/*
-          cat RELEASE_NOTES.md >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Check publishing credentials
-        if: inputs.publish
-        env:
-          TWINE_PASSWORD: ${{ secrets.PYPI_API_KEY }}
-        run: |
-          if [ -z "$TWINE_PASSWORD" ]; then
-            echo "::error::Set the PYPI_API_KEY repository secret before publishing."
-            exit 1
-          fi
-
-      - name: Create release tag at validated commit
-        if: inputs.publish
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          if git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"; then
-            echo "Using existing tag $RELEASE_TAG at the validated commit."
-          else
-            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
-              -f "ref=refs/tags/$RELEASE_TAG" -f "sha=$(git rev-parse HEAD)"
-          fi
-
-      - name: Publish to PyPI
-        if: inputs.publish
-        env:
-          TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.PYPI_API_KEY }}
-          TWINE_NON_INTERACTIVE: "1"
-        run: .venv/bin/twine upload dist/*
-
-      - name: Create GitHub release
-        if: inputs.publish
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release create "$RELEASE_TAG" dist/* --verify-tag --title "$RELEASE_TAG" --notes-file RELEASE_NOTES.md
